@@ -1,71 +1,194 @@
 class DataLoader {
     constructor() {
         this.samples = [];
-        this.trainingData = null;
-        this.testingData = null;
+        this.isDataLoaded = false;
         this.charToInt = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
         this.riskLabels = ['High', 'Medium', 'Low'];
-        this.isDataLoaded = false;
     }
 
-    // Load sample DNA data
-    async loadSampleData() {
-        // In a real application, this would load actual data from a server
-        // For now, using generated data
-        this.samples = this.generateSampleData(30); // Reduced sample count for performance
-        this.isDataLoaded = true;
-        return this.samples;
-    }
-
-    // Generate sample data
-    generateSampleData(count) {
-        const samples = [];
-        const bases = ['A', 'T', 'C', 'G'];
-        
-        for (let i = 1; i <= count; i++) {
-            // Generate random DNA sequence
-            let sequence = '';
-            for (let j = 0; j < 100; j++) {
-                sequence += bases[Math.floor(Math.random() * 4)];
+    // Load data from uploaded file
+    async loadFromFile(file, progressCallback = null) {
+        return new Promise((resolve, reject) => {
+            if (progressCallback) progressCallback(10);
+            
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                try {
+                    if (progressCallback) progressCallback(30);
+                    
+                    const fileContent = e.target.result;
+                    let parsedData;
+                    
+                    if (file.name.endsWith('.csv')) {
+                        parsedData = this.parseCSV(fileContent);
+                    } else {
+                        throw new Error('Unsupported file format. Please upload a CSV file.');
+                    }
+                    
+                    if (progressCallback) progressCallback(70);
+                    
+                    // Process the parsed data
+                    this.processParsedData(parsedData);
+                    
+                    if (progressCallback) progressCallback(100);
+                    this.isDataLoaded = true;
+                    resolve(this.samples);
+                    
+                } catch (error) {
+                    reject(error);
+                }
+            };
+            
+            reader.onerror = () => {
+                reject(new Error('Failed to read file'));
+            };
+            
+            if (file.name.endsWith('.csv')) {
+                reader.readAsText(file);
+            } else {
+                reject(new Error('Unsupported file format'));
             }
-            
-            // Generate features
-            const gcContent = 30 + Math.random() * 40; // 30-70%
-            const numA = Math.floor(Math.random() * 30) + 15;
-            const numT = Math.floor(Math.random() * 30) + 15;
-            const numC = Math.floor(Math.random() * 30) + 15;
-            const numG = 100 - numA - numT - numC;
-            const kmerFreq = Math.random();
-            
-            // Generate risk level based on features (simulating real patterns)
-            let riskLevel;
-            const riskScore = (gcContent / 100) + (kmerFreq * 0.3) + (Math.random() * 0.3);
-            
-            if (riskScore > 0.7) riskLevel = 'High';
-            else if (riskScore > 0.4) riskLevel = 'Medium';
-            else riskLevel = 'Low';
-            
-            samples.push({
-                id: `SAMPLE_${i}`,
-                name: `DNA_${this.generateName()}`,
-                sequence: sequence,
-                features: {
-                    gcContent: gcContent,
-                    sequenceLength: 100,
-                    numA: numA,
-                    numT: numT,
-                    numC: numC,
-                    numG: numG,
-                    kmerFreq: kmerFreq
-                },
-                actualRisk: riskLevel,
+        });
+    }
+
+    // Parse CSV content
+    parseCSV(csvContent) {
+        const results = Papa.parse(csvContent, {
+            header: true,
+            skipEmptyLines: true,
+            transform: (value) => {
+                // Convert numeric strings to numbers
+                if (!isNaN(value) && value.trim() !== '') {
+                    return parseFloat(value);
+                }
+                return value;
+            }
+        });
+        
+        if (results.errors.length > 0) {
+            throw new Error(`CSV parsing error: ${results.errors[0].message}`);
+        }
+        
+        if (results.data.length === 0) {
+            throw new Error('No data found in CSV file');
+        }
+        
+        return results.data;
+    }
+
+    // Process parsed data into samples
+    processParsedData(parsedData) {
+        this.samples = [];
+        
+        parsedData.forEach((row, index) => {
+            // Determine available columns and map them
+            const sample = {
+                id: row.Sample_ID || `SAMPLE_${index + 1}`,
+                name: row.Sample_ID || `DNA_${this.generateName()}`,
+                sequence: row.Sequence || '',
+                features: {},
+                actualRisk: null,
                 predictedRisk: null,
                 confidence: null,
                 isCorrect: null
-            });
+            };
+            
+            // Extract features from available columns
+            if (row.GC_Content !== undefined) sample.features.gcContent = parseFloat(row.GC_Content);
+            if (row.Sequence_Length !== undefined) sample.features.sequenceLength = parseInt(row.Sequence_Length);
+            if (row.Num_A !== undefined) sample.features.numA = parseInt(row.Num_A);
+            if (row.Num_T !== undefined) sample.features.numT = parseInt(row.Num_T);
+            if (row.Num_C !== undefined) sample.features.numC = parseInt(row.Num_C);
+            if (row.Num_G !== undefined) sample.features.numG = parseInt(row.Num_G);
+            if (row.kmer_3_freq !== undefined) sample.features.kmerFreq = parseFloat(row.kmer_3_freq);
+            
+            // Extract risk label
+            if (row.Disease_Risk) {
+                sample.actualRisk = this.normalizeRiskLabel(row.Disease_Risk);
+            } else if (row.Class_Label) {
+                // Try to infer risk from class label
+                sample.actualRisk = this.inferRiskFromClass(row.Class_Label);
+            }
+            
+            // If no risk label is available, generate a random one for demo purposes
+            if (!sample.actualRisk) {
+                sample.actualRisk = this.riskLabels[Math.floor(Math.random() * this.riskLabels.length)];
+            }
+            
+            // Calculate missing features from sequence if available
+            if (sample.sequence && sample.sequence.length > 0) {
+                this.calculateFeaturesFromSequence(sample);
+            }
+            
+            this.samples.push(sample);
+        });
+        
+        console.log(`Processed ${this.samples.length} samples`);
+    }
+
+    // Normalize risk labels
+    normalizeRiskLabel(label) {
+        const labelStr = String(label).toLowerCase().trim();
+        
+        if (labelStr.includes('high') || labelStr === 'h') return 'High';
+        if (labelStr.includes('medium') || labelStr.includes('moderate') || labelStr === 'm') return 'Medium';
+        if (labelStr.includes('low') || labelStr === 'l') return 'Low';
+        
+        return null;
+    }
+
+    // Infer risk from class label
+    inferRiskFromClass(classLabel) {
+        const classStr = String(classLabel).toLowerCase();
+        
+        // Simple heuristic - in real application, this would be based on domain knowledge
+        if (classStr.includes('pathogen') || classStr.includes('cancer') || classStr.includes('disease')) {
+            return 'High';
+        } else if (classStr.includes('bacteria') || classStr.includes('virus')) {
+            return 'Medium';
+        } else {
+            return 'Low';
+        }
+    }
+
+    // Calculate features from DNA sequence
+    calculateFeaturesFromSequence(sample) {
+        const sequence = sample.sequence.toUpperCase();
+        
+        // Calculate GC content if not provided
+        if (sample.features.gcContent === undefined) {
+            const gcCount = (sequence.match(/[GC]/g) || []).length;
+            sample.features.gcContent = (gcCount / sequence.length) * 100;
         }
         
-        return samples;
+        // Calculate base counts if not provided
+        if (sample.features.numA === undefined) {
+            sample.features.numA = (sequence.match(/A/g) || []).length;
+        }
+        if (sample.features.numT === undefined) {
+            sample.features.numT = (sequence.match(/T/g) || []).length;
+        }
+        if (sample.features.numC === undefined) {
+            sample.features.numC = (sequence.match(/C/g) || []).length;
+        }
+        if (sample.features.numG === undefined) {
+            sample.features.numG = (sequence.match(/G/g) || []).length;
+        }
+        
+        // Set sequence length if not provided
+        if (sample.features.sequenceLength === undefined) {
+            sample.features.sequenceLength = sequence.length;
+        }
+        
+        // Calculate k-mer frequency if not provided
+        if (sample.features.kmerFreq === undefined && sequence.length >= 3) {
+            const kmers = new Set();
+            for (let i = 0; i < sequence.length - 2; i++) {
+                kmers.add(sequence.substring(i, i + 3));
+            }
+            sample.features.kmerFreq = kmers.size / (sequence.length - 2);
+        }
     }
 
     // Generate random DNA sample names
@@ -76,80 +199,12 @@ class DataLoader {
                suffixes[Math.floor(Math.random() * suffixes.length)];
     }
 
-    // Encode DNA sequence
-    encodeDNASequence(sequence) {
-        const cleanedSeq = sequence.toUpperCase().replace(/[^ATCG]/g, '');
-        return Array.from(cleanedSeq).map(char => this.charToInt[char]);
-    }
-
-    // Normalize features
-    normalizeFeatures(features) {
-        const normalized = {};
-        
-        normalized.gcContent = (features.gcContent - 30) / 40;
-        normalized.sequenceLength = (features.sequenceLength - 50) / 100;
-        
-        const totalBases = features.numA + features.numT + features.numC + features.numG;
-        normalized.numA = features.numA / totalBases;
-        normalized.numT = features.numT / totalBases;
-        normalized.numC = features.numC / totalBases;
-        normalized.numG = features.numG / totalBases;
-        
-        normalized.kmerFreq = features.kmerFreq;
-        
-        return Object.values(normalized);
-    }
-
-    // Prepare training data
-    prepareTrainingData() {
-        const sequences = [];
-        const numericalFeatures = [];
-        const labels = [];
-        
-        this.samples.forEach(sample => {
-            sequences.push(this.encodeDNASequence(sample.sequence));
-            numericalFeatures.push(this.normalizeFeatures(sample.features));
-            labels.push(this.riskLabels.indexOf(sample.actualRisk));
-        });
-        
-        this.trainingData = {
-            sequences: sequences,
-            numericalFeatures: numericalFeatures,
-            labels: labels
-        };
-        
-        return this.trainingData;
-    }
-
-    // Split data into training and testing sets
-    splitData(trainRatio = 0.7) {
-        if (!this.trainingData) this.prepareTrainingData();
-        
-        const totalSamples = this.samples.length;
-        const trainSize = Math.floor(totalSamples * trainRatio);
-        
-        // Shuffle indices randomly
-        const indices = Array.from({length: totalSamples}, (_, i) => i);
-        for (let i = indices.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [indices[i], indices[j]] = [indices[j], indices[i]];
-        }
-        
-        const trainIndices = indices.slice(0, trainSize);
-        const testIndices = indices.slice(trainSize);
-        
-        this.testingData = {
-            sequences: testIndices.map(i => this.trainingData.sequences[i]),
-            numericalFeatures: testIndices.map(i => this.trainingData.numericalFeatures[i]),
-            labels: testIndices.map(i => this.trainingData.labels[i]),
-            sampleIndices: testIndices
-        };
-        
-        return this.testingData;
-    }
-
     // Get samples ranked by accuracy
     getRankedSamples() {
+        if (!this.samples || this.samples.length === 0) {
+            return [];
+        }
+        
         if (!this.samples.some(s => s.predictedRisk !== null)) {
             // If no prediction data, return sorted by ID
             return this.samples.slice().sort((a, b) => a.id.localeCompare(b.id));
@@ -165,6 +220,10 @@ class DataLoader {
 
     // Get timeline data for chart
     getTimelineData() {
+        if (!this.samples || this.samples.length === 0) {
+            return [];
+        }
+        
         const predictions = this.samples
             .filter(s => s.predictedRisk !== null)
             .map((sample, index) => ({
