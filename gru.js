@@ -1,203 +1,203 @@
-class DiseaseRiskModel {
+class GRUDiseaseModel {
     constructor() {
+        this.model = null;
         this.isTrained = false;
-        this.trainingData = null;
-        this.modelInfo = {
-            version: '4.0-advanced',
-            type: 'Enhanced Pattern Recognition'
-        };
-        this.patterns = null;
+        this.maxSequenceLength = 100;
+        this.vocabSize = 4; // A, T, C, G
+        this.numOutputs = 2; // Binary classification outputs
     }
 
-    // 修复方法名：从 trainAdvancedModel 改为 trainModel
+    // Convert DNA sequence to numerical encoding
+    encodeSequence(sequence) {
+        const encoding = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
+        const encoded = [];
+        
+        for (let i = 0; i < Math.min(sequence.length, this.maxSequenceLength); i++) {
+            const char = sequence[i].toUpperCase();
+            encoded.push(encoding[char] || 0);
+        }
+        
+        // Pad sequence if shorter than max length
+        while (encoded.length < this.maxSequenceLength) {
+            encoded.push(0);
+        }
+        
+        return encoded;
+    }
+
+    // Convert to one-hot encoding for GRU input
+    oneHotEncode(encodedSequence) {
+        const oneHot = [];
+        for (let i = 0; i < encodedSequence.length; i++) {
+            const vector = new Array(this.vocabSize).fill(0);
+            vector[encodedSequence[i]] = 1;
+            oneHot.push(vector);
+        }
+        return oneHot;
+    }
+
+    // Prepare training data
+    prepareTrainingData(samples) {
+        const sequences = [];
+        const labels = [];
+        
+        samples.forEach(sample => {
+            if (sample.sequence && sample.actualRisk) {
+                const encoded = this.encodeSequence(sample.sequence);
+                const oneHot = this.oneHotEncode(encoded);
+                sequences.push(oneHot);
+                
+                // Binary classification: High risk vs Low/Medium
+                const isHighRisk = sample.actualRisk === 'High' ? 1 : 0;
+                const isPathogenic = this.isPathogenicSequence(sample) ? 1 : 0;
+                
+                labels.push([isHighRisk, isPathogenic]);
+            }
+        });
+        
+        return {
+            sequences: tf.tensor3d(sequences),
+            labels: tf.tensor2d(labels)
+        };
+    }
+
+    // Enhanced feature detection for pathogenic sequences
+    isPathogenicSequence(sample) {
+        const features = sample.features;
+        if (!features) return false;
+        
+        // Rules based on known pathogenic markers
+        const hasHighGC = features.gcContent > 60;
+        const hasLowComplexity = features.kmerFreq < 0.3;
+        const hasBaseBias = this.calculateBaseBias(sample) > 0.35;
+        const hasRepeats = this.detectRepeats(sample.sequence) > 0.1;
+        
+        return hasHighGC || hasLowComplexity || hasBaseBias || hasRepeats;
+    }
+
+    calculateBaseBias(sample) {
+        const bases = [sample.features.numA, sample.features.numT, sample.features.numC, sample.features.numG];
+        const maxBase = Math.max(...bases);
+        const total = bases.reduce((a, b) => a + b, 0);
+        return maxBase / total;
+    }
+
+    detectRepeats(sequence) {
+        if (!sequence || sequence.length < 6) return 0;
+        
+        let repeatCount = 0;
+        for (let i = 0; i < sequence.length - 5; i++) {
+            const kmer = sequence.substring(i, i + 3);
+            let repeats = 0;
+            for (let j = i + 3; j < sequence.length - 2; j += 3) {
+                if (sequence.substring(j, j + 3) === kmer) {
+                    repeats++;
+                } else {
+                    break;
+                }
+            }
+            if (repeats >= 2) repeatCount++;
+        }
+        
+        return repeatCount / (sequence.length / 3);
+    }
+
+    // Build the GRU model
+    buildModel() {
+        const model = tf.sequential();
+        
+        // GRU Layer
+        model.add(tf.layers.gru({
+            units: 64,
+            returnSequences: false,
+            inputShape: [this.maxSequenceLength, this.vocabSize],
+            dropout: 0.2,
+            recurrentDropout: 0.2
+        }));
+        
+        // Dense layers
+        model.add(tf.layers.dense({
+            units: 32,
+            activation: 'relu',
+            kernelRegularizer: tf.regularizers.l2({l2: 0.01})
+        }));
+        
+        model.add(tf.layers.dropout({rate: 0.3}));
+        
+        model.add(tf.layers.dense({
+            units: 16,
+            activation: 'relu'
+        }));
+        
+        // Multi-output layer
+        model.add(tf.layers.dense({
+            units: this.numOutputs,
+            activation: 'sigmoid'
+        }));
+        
+        // Compile model
+        model.compile({
+            optimizer: tf.train.adam(0.001),
+            loss: 'binaryCrossentropy',
+            metrics: ['accuracy', 'precision', 'recall']
+        });
+        
+        this.model = model;
+        console.log('GRU Model built successfully');
+        return model;
+    }
+
+    // Train the GRU model
     async trainModel(samples, progressCallback = null) {
         try {
-            if (progressCallback) progressCallback(10, 'Analyzing dataset patterns...');
+            if (progressCallback) progressCallback(10, 'Building GRU model...');
             
-            // Analyze the dataset to discover complex patterns
-            this.patterns = this.analyzeAdvancedPatterns(samples);
+            // Build model if not already built
+            if (!this.model) {
+                this.buildModel();
+            }
             
-            if (progressCallback) progressCallback(40, 'Building feature relationships...');
+            if (progressCallback) progressCallback(20, 'Preparing training data...');
             
-            // Build feature importance and relationships
-            this.featureWeights = this.calculateFeatureWeights(samples);
+            // Prepare training data
+            const {sequences, labels} = this.prepareTrainingData(samples);
             
-            if (progressCallback) progressCallback(70, 'Optimizing prediction rules...');
+            if (progressCallback) progressCallback(40, 'Training GRU model...');
             
-            // Create ensemble of prediction rules
-            this.ensembleRules = this.createEnsembleRules(samples);
+            // Train the model
+            const history = await this.model.fit(sequences, labels, {
+                epochs: 50,
+                batchSize: 32,
+                validationSplit: 0.2,
+                callbacks: {
+                    onEpochEnd: async (epoch, logs) => {
+                        const progress = 40 + (epoch / 50) * 50;
+                        if (progressCallback) {
+                            progressCallback(
+                                Math.min(90, progress), 
+                                `Epoch ${epoch + 1}/50 - Loss: ${logs.loss.toFixed(4)}`
+                            );
+                        }
+                    }
+                }
+            });
             
             if (progressCallback) progressCallback(100, 'Training completed');
             
             this.isTrained = true;
-            this.modelInfo.type = 'Ensemble Pattern Recognition';
-            console.log('Advanced model training completed');
+            console.log('GRU Model training completed');
+            
+            // Clean up tensors
+            sequences.dispose();
+            labels.dispose();
             
         } catch (error) {
-            console.error('Error training advanced model:', error);
+            console.error('Error training GRU model:', error);
             throw error;
         }
     }
 
-    // Analyze advanced patterns in the dataset
-    analyzeAdvancedPatterns(samples) {
-        const patterns = {
-            gcContent: { high: [], medium: [], low: [] },
-            sequenceComplexity: { high: [], medium: [], low: [] },
-            baseComposition: { high: [], medium: [], low: [] },
-            combinedFeatures: { high: [], medium: [], low: [] }
-        };
-        
-        samples.forEach(sample => {
-            if (!sample.actualRisk || !sample.features) return;
-            
-            const risk = sample.actualRisk;
-            const features = sample.features;
-            
-            // GC Content patterns
-            if (features.gcContent > 55) {
-                patterns.gcContent.high.push(risk);
-            } else if (features.gcContent > 45) {
-                patterns.gcContent.medium.push(risk);
-            } else {
-                patterns.gcContent.low.push(risk);
-            }
-            
-            // Sequence complexity patterns
-            if (features.kmerFreq > 0.7) {
-                patterns.sequenceComplexity.high.push(risk);
-            } else if (features.kmerFreq > 0.4) {
-                patterns.sequenceComplexity.medium.push(risk);
-            } else {
-                patterns.sequenceComplexity.low.push(risk);
-            }
-            
-            // Base composition patterns
-            const maxBase = Math.max(features.numA, features.numT, features.numC, features.numG);
-            const totalBases = features.sequenceLength;
-            const maxRatio = maxBase / totalBases;
-            
-            if (maxRatio > 0.35) {
-                patterns.baseComposition.high.push(risk);
-            } else if (maxRatio > 0.25) {
-                patterns.baseComposition.medium.push(risk);
-            } else {
-                patterns.baseComposition.low.push(risk);
-            }
-            
-            // Combined feature patterns
-            const combinedScore = (features.gcContent / 100) + features.kmerFreq + (maxRatio * 2);
-            if (combinedScore > 2.0) {
-                patterns.combinedFeatures.high.push(risk);
-            } else if (combinedScore > 1.5) {
-                patterns.combinedFeatures.medium.push(risk);
-            } else {
-                patterns.combinedFeatures.low.push(risk);
-            }
-        });
-        
-        // Calculate probabilities for each pattern
-        Object.keys(patterns).forEach(patternType => {
-            Object.keys(patterns[patternType]).forEach(level => {
-                const risks = patterns[patternType][level];
-                const total = risks.length;
-                if (total > 0) {
-                    const counts = {
-                        High: risks.filter(r => r === 'High').length,
-                        Medium: risks.filter(r => r === 'Medium').length,
-                        Low: risks.filter(r => r === 'Low').length
-                    };
-                    
-                    patterns[patternType][level] = {
-                        probabilities: {
-                            High: counts.High / total,
-                            Medium: counts.Medium / total,
-                            Low: counts.Low / total
-                        },
-                        confidence: Math.max(counts.High, counts.Medium, counts.Low) / total,
-                        sampleCount: total
-                    };
-                }
-            });
-        });
-        
-        return patterns;
-    }
-
-    // Calculate feature importance weights
-    calculateFeatureWeights(samples) {
-        const weights = {
-            gcContent: 0.25,
-            kmerFreq: 0.30,
-            baseComposition: 0.25,
-            sequenceLength: 0.10,
-            combinedScore: 0.10
-        };
-        
-        // Adjust weights based on feature correlation with risk
-        samples.forEach(sample => {
-            if (!sample.actualRisk) return;
-            
-            const features = sample.features;
-            const maxBase = Math.max(features.numA, features.numT, features.numC, features.numG);
-            const baseBias = maxBase / features.sequenceLength;
-            
-            // Simple heuristic: features that vary more across risk categories get higher weights
-            // In a real implementation, you would use statistical measures like mutual information
-        });
-        
-        return weights;
-    }
-
-    // Create ensemble of prediction rules
-    createEnsembleRules(samples) {
-        const rules = [];
-        
-        // Rule 1: GC Content based
-        rules.push((features) => {
-            const gc = features.gcContent;
-            if (gc > 58) return { risk: 'High', confidence: 0.7 };
-            if (gc > 52) return { risk: 'Medium', confidence: 0.6 };
-            if (gc > 46) return { risk: 'Low', confidence: 0.5 };
-            return { risk: 'Low', confidence: 0.4 };
-        });
-        
-        // Rule 2: Sequence complexity based
-        rules.push((features) => {
-            const complexity = features.kmerFreq;
-            if (complexity > 0.75) return { risk: 'High', confidence: 0.6 };
-            if (complexity > 0.55) return { risk: 'Medium', confidence: 0.7 };
-            if (complexity > 0.35) return { risk: 'Low', confidence: 0.6 };
-            return { risk: 'High', confidence: 0.5 };
-        });
-        
-        // Rule 3: Base composition based
-        rules.push((features) => {
-            const maxBase = Math.max(features.numA, features.numT, features.numC, features.numG);
-            const bias = maxBase / features.sequenceLength;
-            if (bias > 0.35) return { risk: 'High', confidence: 0.6 };
-            if (bias > 0.28) return { risk: 'Medium', confidence: 0.5 };
-            return { risk: 'Low', confidence: 0.4 };
-        });
-        
-        // Rule 4: Combined feature score
-        rules.push((features) => {
-            const gcNorm = features.gcContent / 100;
-            const complexity = features.kmerFreq;
-            const maxBase = Math.max(features.numA, features.numT, features.numC, features.numG);
-            const bias = maxBase / features.sequenceLength;
-            
-            const score = (gcNorm * 0.4) + (complexity * 0.3) + (bias * 0.3);
-            
-            if (score > 0.7) return { risk: 'High', confidence: 0.8 };
-            if (score > 0.5) return { risk: 'Medium', confidence: 0.7 };
-            return { risk: 'Low', confidence: 0.6 };
-        });
-        
-        return rules;
-    }
-
-    // 修复方法名：从 predictSamplesAdvanced 改为 predictSamples
+    // Predict samples using GRU model
     async predictSamples(samples, progressCallback = null) {
         if (!this.isTrained) {
             throw new Error('Model not trained');
@@ -209,90 +209,80 @@ class DiseaseRiskModel {
             
             for (let i = 0; i < totalSamples; i++) {
                 const sample = samples[i];
-                const result = this.predictSingleSample(sample);
+                const result = await this.predictSingleSample(sample);
                 results.push(result);
                 
                 if (progressCallback) {
                     const progress = ((i + 1) / totalSamples) * 100;
                     progressCallback(Math.round(progress));
                 }
-                
-                // Small delay to prevent blocking
-                await new Promise(resolve => setTimeout(resolve, 5));
             }
             
             return results;
             
         } catch (error) {
-            console.error('Error in advanced prediction:', error);
+            console.error('Error in GRU prediction:', error);
             throw error;
         }
     }
 
-    // 修复方法名：从 predictSingleSampleAdvanced 改为 predictSingleSample
-    predictSingleSample(sample) {
-        const features = sample.features;
+    // Predict single sample
+    async predictSingleSample(sample) {
+        if (!sample.sequence) {
+            return {
+                predictedRisk: 'Low',
+                confidence: 0.5,
+                probabilities: [0.5, 0.5]
+            };
+        }
         
-        // Get predictions from all rules in the ensemble
-        const rulePredictions = this.ensembleRules.map(rule => rule(features));
+        const encoded = this.encodeSequence(sample.sequence);
+        const oneHot = this.oneHotEncode(encoded);
+        const tensor = tf.tensor3d([oneHot]);
         
-        // Combine predictions using weighted voting
-        const voteCounts = { High: 0, Medium: 0, Low: 0 };
-        let totalConfidence = 0;
+        const prediction = this.model.predict(tensor);
+        const values = await prediction.data();
         
-        rulePredictions.forEach(prediction => {
-            voteCounts[prediction.risk] += prediction.confidence;
-            totalConfidence += prediction.confidence;
-        });
+        // Clean up tensors
+        tensor.dispose();
+        prediction.dispose();
         
-        // Find the risk with highest weighted votes
-        let predictedRisk = 'Medium';
-        let maxVotes = 0;
+        const [highRiskProb, pathogenicProb] = values;
+        const confidence = Math.max(highRiskProb, pathogenicProb);
         
-        Object.keys(voteCounts).forEach(risk => {
-            if (voteCounts[risk] > maxVotes) {
-                maxVotes = voteCounts[risk];
-                predictedRisk = risk;
-            }
-        });
-        
-        // Calculate overall confidence
-        const confidence = Math.min(0.95, maxVotes / totalConfidence + 0.1);
-        
-        // Add some intelligent "errors" to make it realistic but maintain high accuracy
-        let finalPrediction = predictedRisk;
-        let finalConfidence = confidence;
-        
-        // Only introduce errors in 10% of cases (down from 30%)
-        if (Math.random() < 0.1) {
-            const wrongRisks = ['High', 'Medium', 'Low'].filter(r => r !== predictedRisk);
-            finalPrediction = wrongRisks[Math.floor(Math.random() * wrongRisks.length)];
-            finalConfidence = Math.max(0.3, confidence - 0.3);
+        // Determine final risk classification
+        let predictedRisk = 'Low';
+        if (highRiskProb > 0.7) {
+            predictedRisk = 'High';
+        } else if (highRiskProb > 0.4 || pathogenicProb > 0.6) {
+            predictedRisk = 'Medium';
         }
         
         return {
-            predictedRisk: finalPrediction,
-            confidence: finalConfidence,
-            probabilities: this.getProbabilities(finalPrediction, finalConfidence)
+            predictedRisk: predictedRisk,
+            confidence: confidence,
+            probabilities: [highRiskProb, pathogenicProb],
+            highRiskProbability: highRiskProb,
+            pathogenicProbability: pathogenicProb
         };
     }
 
-    // Generate probability distribution
-    getProbabilities(predictedRisk, confidence) {
-        const baseProb = (1 - confidence) / 2;
-        const probs = {
-            High: baseProb,
-            Medium: baseProb,
-            Low: baseProb
-        };
-        
-        probs[predictedRisk] = confidence;
-        return [probs.High, probs.Medium, probs.Low];
-    }
-
+    // Get model information
     getModelInfo() {
-        return this.modelInfo;
+        return {
+            version: '2.0-GRU',
+            type: 'Multi-Output GRU Neural Network',
+            architecture: 'GRU(64) -> Dense(32) -> Dense(16) -> Output(2)',
+            outputs: ['High_Risk_Probability', 'Pathogenic_Probability']
+        };
+    }
+
+    // Model summary
+    async summary() {
+        if (this.model) {
+            this.model.summary();
+        }
     }
 }
 
-const diseaseModel = new DiseaseRiskModel();
+const diseaseModel = new GRUDiseaseModel();
