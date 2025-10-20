@@ -333,8 +333,9 @@ class RobustGRUDiseaseModel {
         
         const sequenceTensor = tf.tensor3d(oneHotSequences);
         
+        let prediction; // 在try块外声明变量
         try {
-            const prediction = this.model.predict(sequenceTensor);
+            prediction = this.model.predict(sequenceTensor);
             const values = await prediction.data();
             
             let resultIndex = 0;
@@ -346,9 +347,9 @@ class RobustGRUDiseaseModel {
                 
                 const startIdx = resultIndex * 3;
                 const probabilities = [
-                    values[startIdx],
-                    values[startIdx + 1], 
-                    values[startIdx + 2]
+                    values[startIdx] || 0,
+                    values[startIdx + 1] || 0, 
+                    values[startIdx + 2] || 0
                 ];
                 
                 const maxIndex = probabilities.indexOf(Math.max(...probabilities));
@@ -407,7 +408,7 @@ class RobustGRUDiseaseModel {
             this.trainingHistory[this.trainingHistory.length - 1] : null;
         
         const bestEpoch = this.trainingHistory.reduce((best, current) => {
-            return current.valAccuracy > best.valAccuracy ? current : best;
+            return (current.valAccuracy || 0) > (best.valAccuracy || 0) ? current : best;
         }, {valAccuracy: 0});
         
         return {
