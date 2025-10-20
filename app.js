@@ -191,44 +191,334 @@ class DNADiseaseDashboard {
         }
     }
 
-    // ... rest of the methods remain the same as previous version ...
+    updateRankingDisplay() {
+        const container = document.getElementById('rankingContainer');
+        
+        if (!this.isDataLoaded || !dataLoader.samples || dataLoader.samples.length === 0) {
+            container.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Upload a CSV file with DNA sequences to see predictions</p>
+                </div>
+            `;
+            return;
+        }
+
+        const rankedSamples = dataLoader.getRankedSamples();
+        const topSamples = rankedSamples.slice(0, 10);
+        
+        if (topSamples.length === 0) {
+            container.innerHTML = `
+                <div class="loading">
+                    <p>No prediction data available. Run prediction to see rankings.</p>
+                </div>
+            `;
+            return;
+        }
+
+        let html = '';
+        topSamples.forEach((sample, index) => {
+            const riskClass = sample.predictedRisk ? 
+                `rank-item ${sample.predictedRisk.toLowerCase()}-risk` : 'rank-item';
+            const confidence = sample.confidence ? (sample.confidence * 100).toFixed(1) + '%' : '--';
+            const correctIcon = sample.isCorrect ? '✅' : '❌';
+            
+            html += `
+                <div class="${riskClass}" onclick="dashboard.showSequencePreview('${sample.id}')">
+                    <div class="sample-info">
+                        <div class="sample-name">${sample.name}</div>
+                        <div class="sample-details">
+                            Actual: ${sample.actualRisk} | Predicted: ${sample.predictedRisk || '--'} ${correctIcon}
+                        </div>
+                        ${sample.highRiskProbability !== undefined ? `
+                        <div class="probability-bars">
+                            <div class="probability-bar">
+                                <div class="probability-label">High Risk:</div>
+                                <div class="accuracy-bar">
+                                    <div class="accuracy-fill fill-high-risk" style="width: ${sample.highRiskProbability * 100}%"></div>
+                                </div>
+                                <div class="probability-value">${(sample.highRiskProbability * 100).toFixed(1)}%</div>
+                            </div>
+                            <div class="probability-bar">
+                                <div class="probability-label">Pathogenic:</div>
+                                <div class="accuracy-bar">
+                                    <div class="accuracy-fill fill-pathogenic" style="width: ${sample.pathogenicProbability * 100}%"></div>
+                                </div>
+                                <div class="probability-value">${(sample.pathogenicProbability * 100).toFixed(1)}%</div>
+                            </div>
+                        </div>
+                        ` : ''}
+                    </div>
+                    <div class="sample-stats">
+                        <div class="confidence">${confidence}</div>
+                        ${sample.predictedRisk ? `<div class="risk-badge badge-${sample.predictedRisk.toLowerCase()}">${sample.predictedRisk}</div>` : ''}
+                    </div>
+                </div>
+            `;
+        });
+        
+        container.innerHTML = html;
+    }
+
+    showSequencePreview(sampleId) {
+        const sample = dataLoader.samples.find(s => s.id === sampleId);
+        if (!sample || !sample.sequence) return;
+        
+        const preview = document.getElementById('sequencePreview');
+        const content = document.getElementById('sequenceContent');
+        
+        // Format sequence for better readability (groups of 10 bases)
+        let formattedSequence = '';
+        for (let i = 0; i < sample.sequence.length; i += 10) {
+            formattedSequence += sample.sequence.substring(i, i + 10) + ' ';
+            if ((i / 10 + 1) % 5 === 0) formattedSequence += '\n';
+        }
+        
+        content.textContent = formattedSequence;
+        preview.style.display = 'block';
+    }
+
+    // 添加缺失的 initTimelineChart 方法
+    initTimelineChart() {
+        const ctx = document.getElementById('timelineChart').getContext('2d');
+        this.timelineChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Correct Predictions',
+                        borderColor: '#27ae60',
+                        backgroundColor: 'rgba(39, 174, 96, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        data: []
+                    },
+                    {
+                        label: 'Incorrect Predictions', 
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        tension: 0.4,
+                        fill: true,
+                        data: []
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        title: {
+                            display: true,
+                            text: 'Sample Sequence'
+                        }
+                    },
+                    y: {
+                        title: {
+                            display: true,
+                            text: 'Prediction Accuracy'
+                        },
+                        min: 0,
+                        max: 1
+                    }
+                }
+            }
+        });
+    }
+
+    // 添加缺失的 initProbabilityChart 方法
+    initProbabilityChart() {
+        const ctx = document.getElementById('probabilityChart').getContext('2d');
+        this.probabilityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['High Risk', 'Pathogenic'],
+                datasets: [
+                    {
+                        label: 'Probability Distribution',
+                        data: [0, 0],
+                        backgroundColor: [
+                            'rgba(231, 76, 60, 0.7)',
+                            'rgba(243, 156, 18, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(231, 76, 60, 1)',
+                            'rgba(243, 156, 18, 1)'
+                        ],
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        title: {
+                            display: true,
+                            text: 'Probability'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 添加缺失的 updateTimelineChart 方法
+    updateTimelineChart() {
+        if (!this.timelineChart) return;
+        
+        const timelineData = dataLoader.getTimelineData();
+        const correctData = [];
+        const incorrectData = [];
+        
+        timelineData.forEach((point, index) => {
+            if (point.y === 1) {
+                correctData.push({x: index, y: 1});
+                incorrectData.push({x: index, y: 0});
+            } else {
+                correctData.push({x: index, y: 0});
+                incorrectData.push({x: index, y: 1});
+            }
+        });
+        
+        this.timelineChart.data.datasets[0].data = correctData;
+        this.timelineChart.data.datasets[1].data = incorrectData;
+        this.timelineChart.update();
+    }
+
+    // 添加缺失的 updateProbabilityChart 方法
+    updateProbabilityChart() {
+        if (!this.probabilityChart || !dataLoader.samples) return;
+        
+        const samplesWithPredictions = dataLoader.samples.filter(s => s.highRiskProbability !== undefined);
+        if (samplesWithPredictions.length === 0) return;
+        
+        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + s.highRiskProbability, 0) / samplesWithPredictions.length;
+        const avgPathogenic = samplesWithPredictions.reduce((sum, s) => sum + s.pathogenicProbability, 0) / samplesWithPredictions.length;
+        
+        this.probabilityChart.data.datasets[0].data = [avgHighRisk, avgPathogenic];
+        this.probabilityChart.update();
+    }
+
+    // 添加缺失的 updatePerformanceMetrics 方法
+    updatePerformanceMetrics() {
+        if (!this.isDataLoaded || !dataLoader.samples) return;
+        
+        const samples = dataLoader.samples;
+        const predictedSamples = samples.filter(s => s.predictedRisk !== null);
+        const correctPredictions = predictedSamples.filter(s => s.isCorrect).length;
+        const totalPredicted = predictedSamples.length;
+        const accuracy = totalPredicted > 0 ? (correctPredictions / totalPredicted * 100).toFixed(1) : 0;
+        
+        document.getElementById('accuracyValue').textContent = `${accuracy}%`;
+        document.getElementById('samplesValue').textContent = samples.length;
+        document.getElementById('correctValue').textContent = correctPredictions;
+        document.getElementById('wrongValue').textContent = totalPredicted - correctPredictions;
+        
+        // Update model info
+        if (this.isModelReady) {
+            const modelInfo = diseaseModel.getModelInfo();
+            document.getElementById('modelType').textContent = `${modelInfo.type}`;
+        }
+    }
+
+    resetSystem() {
+        this.isModelReady = false;
+        this.isDataLoaded = false;
+        this.uploadedFile = null;
+        this.dataSource = null;
+        this.trainingInProgress = false;
+        
+        dataLoader.samples = [];
+        dataLoader.isDataLoaded = false;
+        
+        document.getElementById('fileUpload').value = '';
+        document.getElementById('fileUploadLabel').innerHTML = '<span>📁</span> Upload CSV Dataset';
+        document.getElementById('fileInfo').style.display = 'none';
+        document.getElementById('dataSourceInfo').style.display = 'none';
+        document.getElementById('loadDatasetBtn').disabled = true;
+        document.getElementById('trainModelBtn').disabled = true;
+        document.getElementById('runPredictionBtn').disabled = true;
+        
+        this.updateRankingDisplay();
+        this.updatePerformanceMetrics();
+        
+        // Reset charts
+        if (this.timelineChart) {
+            this.timelineChart.data.datasets[0].data = [];
+            this.timelineChart.data.datasets[1].data = [];
+            this.timelineChart.update();
+        }
+        
+        if (this.probabilityChart) {
+            this.probabilityChart.data.datasets[0].data = [0, 0];
+            this.probabilityChart.update();
+        }
+        
+        // Hide sequence preview
+        document.getElementById('sequencePreview').style.display = 'none';
+        
+        updateStatus('System reset. Upload a CSV file with DNA sequences to begin analysis.');
+        
+        // Clear TensorFlow.js memory
+        if (tf && tf.memory) {
+            tf.disposeVariables();
+        }
+    }
 }
 
 // Global functions for HTML buttons
 function updateStatus(message, isError = false) {
     const statusElement = document.getElementById('status');
-    statusElement.textContent = message;
-    statusElement.style.color = isError ? '#e74c3c' : '#ecf0f1';
+    if (statusElement) {
+        statusElement.textContent = message;
+        statusElement.style.color = isError ? '#e74c3c' : '#ecf0f1';
+    }
 }
 
 function showProgress(percent) {
     const progressContainer = document.getElementById('progressContainer');
     const progressBar = document.getElementById('progressBar');
     
-    progressContainer.style.display = 'block';
-    progressBar.style.width = percent + '%';
-    progressBar.textContent = percent + '%';
+    if (progressContainer && progressBar) {
+        progressContainer.style.display = 'block';
+        progressBar.style.width = percent + '%';
+        progressBar.textContent = percent + '%';
+    }
 }
 
 function hideProgress() {
     const progressContainer = document.getElementById('progressContainer');
-    progressContainer.style.display = 'none';
+    if (progressContainer) {
+        progressContainer.style.display = 'none';
+    }
 }
 
 function loadDataset() {
-    window.dashboard.loadDataset();
+    if (window.dashboard) {
+        window.dashboard.loadDataset();
+    }
 }
 
 function trainModel() {
-    window.dashboard.trainModel();
+    if (window.dashboard) {
+        window.dashboard.trainModel();
+    }
 }
 
 function runPrediction() {
-    window.dashboard.runPrediction();
+    if (window.dashboard) {
+        window.dashboard.runPrediction();
+    }
 }
 
 function resetSystem() {
-    window.dashboard.resetSystem();
+    if (window.dashboard) {
+        window.dashboard.resetSystem();
+    }
 }
 
 // Initialize dashboard when page loads
