@@ -6,6 +6,7 @@
     <title>DNA Disease Risk Prediction Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -76,14 +77,6 @@
             transform: translateY(-2px);
         }
         
-        .btn.secondary {
-            background: #e74c3c;
-        }
-        
-        .btn.secondary:hover {
-            background: #c0392b;
-        }
-        
         .btn.success {
             background: #27ae60;
         }
@@ -92,15 +85,46 @@
             background: #219653;
         }
         
+        .btn.secondary {
+            background: #e74c3c;
+        }
+        
+        .btn.secondary:hover {
+            background: #c0392b;
+        }
+        
         .btn:disabled {
             background: #95a5a6;
             cursor: not-allowed;
             transform: none;
         }
         
+        .file-upload {
+            display: none;
+        }
+        
+        .file-upload-label {
+            background: #9b59b6;
+            color: white;
+            padding: 12px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+        }
+        
+        .file-upload-label:hover {
+            background: #8e44ad;
+            transform: translateY(-2px);
+        }
+        
         .status {
             color: #ecf0f1;
             font-size: 14px;
+            flex-grow: 1;
+            text-align: center;
         }
         
         .content {
@@ -128,6 +152,32 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+        
+        .data-preview {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        
+        .data-preview table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        
+        .data-preview th, .data-preview td {
+            padding: 4px 8px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        
+        .data-preview th {
+            background: #34495e;
+            color: white;
         }
         
         .accuracy-ranking {
@@ -260,6 +310,14 @@
             line-height: 20px;
         }
         
+        .file-info {
+            background: #e8f4fd;
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+        
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
@@ -268,6 +326,10 @@
                 border-right: none;
                 border-bottom: 1px solid #ecf0f1;
             }
+            .controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
         }
     </style>
 </head>
@@ -275,13 +337,17 @@
     <div class="container">
         <div class="header">
             <h1>DNA Disease Risk Prediction Dashboard</h1>
-            <div class="subtitle">Multi-Sample LSTM Risk Assessment System</div>
+            <div class="subtitle">Upload your DNA dataset for analysis</div>
         </div>
         
         <div class="controls">
-            <div>
-                <button class="btn success" onclick="loadDataset()" id="loadDatasetBtn">
-                    <span>📊</span> Load Dataset
+            <div style="display: flex; gap: 10px; align-items: center;">
+                <input type="file" id="fileUpload" class="file-upload" accept=".csv,.xlsx,.xls">
+                <label for="fileUpload" class="file-upload-label" id="fileUploadLabel">
+                    <span>📁</span> Upload Dataset
+                </label>
+                <button class="btn success" onclick="loadDataset()" id="loadDatasetBtn" disabled>
+                    <span>📊</span> Process Data
                 </button>
                 <button class="btn" onclick="trainModel()" id="trainModelBtn" disabled>
                     <span>🧠</span> Train Model
@@ -293,7 +359,7 @@
                     <span>🔄</span> Reset
                 </button>
             </div>
-            <div class="status" id="status">Click "Load Dataset" to start...</div>
+            <div class="status" id="status">Please upload a dataset to begin...</div>
         </div>
 
         <div class="progress-container" id="progressContainer" style="display: none;">
@@ -303,12 +369,25 @@
         <div class="content">
             <div class="panel">
                 <div class="panel-title">
+                    <span>Dataset Preview</span>
+                    <span id="fileInfo" style="font-size: 0.8em; color: #7f8c8d;"></span>
+                </div>
+                <div id="dataPreview" class="data-preview">
+                    <div class="loading">
+                        <p>No dataset uploaded yet</p>
+                        <p style="font-size: 0.9em; margin-top: 10px;">
+                            Supported formats: CSV, Excel<br>
+                            Expected columns: Sequence, GC_Content, Disease_Risk, etc.
+                        </p>
+                    </div>
+                </div>
+                
+                <div class="panel-title">
                     <span>Risk Accuracy Ranking</span>
                 </div>
                 <div id="rankingContainer" class="accuracy-ranking">
                     <div class="loading">
-                        <div class="loading-spinner"></div>
-                        <p>Waiting for dataset...</p>
+                        <p>Waiting for analysis...</p>
                     </div>
                 </div>
             </div>
@@ -329,6 +408,13 @@
                         <div class="legend-color legend-wrong"></div>
                         <span>Wrong Prediction</span>
                     </div>
+                </div>
+                
+                <div class="panel-title" style="margin-top: 30px;">
+                    <span>Model Performance</span>
+                </div>
+                <div id="performanceMetrics" style="padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                    <p style="text-align: center; color: #7f8c8d;">Training and prediction metrics will appear here</p>
                 </div>
             </div>
         </div>
