@@ -521,7 +521,7 @@
         <div class="header">
             <h1>DNA Sequence Classification Dashboard</h1>
             <div class="subtitle">Multi-Output GRU Neural Network for Disease Risk Prediction</div>
-            <div class="model-info">Advanced Deep Learning for Binary Classification of DNA Sequences</div>
+            <div class="model-info">Upload a CSV file with DNA sequences to begin analysis</div>
         </div>
         
         <div class="progress-container" id="progressContainer">
@@ -534,9 +534,6 @@
                 <label for="fileUpload" class="file-upload-label" id="fileUploadLabel">
                     <span>📁</span> Upload CSV Dataset
                 </label>
-                <button class="btn warning" onclick="loadBuiltInDataset()" id="loadBuiltInBtn">
-                    <span>🧬</span> Use Built-in Data
-                </button>
                 <button class="btn success" onclick="loadDataset()" id="loadDatasetBtn" disabled>
                     <span>📊</span> Process Data
                 </button>
@@ -550,7 +547,7 @@
                     <span>🔄</span> Reset System
                 </button>
             </div>
-            <div class="status" id="status">Ready to load DNA sequence data. Click "Use Built-in Data" or upload a CSV file.</div>
+            <div class="status" id="status">Upload a CSV file with DNA sequences to begin analysis</div>
         </div>
         
         <div class="content">
@@ -567,7 +564,7 @@
                 <div id="rankingContainer" class="ranking-container">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        <p>Load DNA sequence data to see predictions</p>
+                        <p>Upload a CSV file with DNA sequences to see predictions</p>
                     </div>
                 </div>
             </div>
