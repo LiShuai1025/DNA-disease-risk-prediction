@@ -85,6 +85,14 @@
             background: #219653;
         }
         
+        .btn.warning {
+            background: #f39c12;
+        }
+        
+        .btn.warning:hover {
+            background: #e67e22;
+        }
+        
         .btn.secondary {
             background: #e74c3c;
         }
@@ -351,6 +359,16 @@
             color: #7f8c8d;
         }
         
+        .data-source-info {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 5px;
+            padding: 10px;
+            margin: 10px 0;
+            font-size: 0.9em;
+            color: #856404;
+        }
+        
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
@@ -370,7 +388,7 @@
     <div class="container">
         <div class="header">
             <h1>DNA Disease Risk Prediction Dashboard</h1>
-            <div class="subtitle">Upload your DNA dataset for risk analysis</div>
+            <div class="subtitle">Advanced Machine Learning for DNA Analysis</div>
         </div>
         
         <div class="controls">
@@ -379,6 +397,9 @@
                 <label for="fileUpload" class="file-upload-label" id="fileUploadLabel">
                     <span>📁</span> Upload Dataset
                 </label>
+                <button class="btn warning" onclick="loadBuiltInDataset()" id="loadBuiltInBtn">
+                    <span>🧬</span> Use Built-in Data
+                </button>
                 <button class="btn success" onclick="loadDataset()" id="loadDatasetBtn" disabled>
                     <span>📊</span> Process Data
                 </button>
@@ -392,7 +413,7 @@
                     <span>🔄</span> Reset
                 </button>
             </div>
-            <div class="status" id="status">Please upload a dataset to begin analysis...</div>
+            <div class="status" id="status">Click "Use Built-in Data" or upload your dataset to begin...</div>
         </div>
 
         <div class="progress-container" id="progressContainer" style="display: none;">
@@ -409,10 +430,14 @@
                     <div class="file-info" id="fileInfo" style="display: none;"></div>
                 </div>
                 
+                <div id="dataSourceInfo" class="data-source-info" style="display: none;">
+                    <!-- Data source information will appear here -->
+                </div>
+                
                 <div id="rankingContainer" class="accuracy-ranking">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        <p>Upload and process a dataset to see rankings</p>
+                        <p>Use built-in data or upload a dataset to see rankings</p>
                     </div>
                 </div>
             </div>
@@ -457,6 +482,9 @@
                             <div class="metric-value" id="wrongValue">0</div>
                             <div class="metric-label">Wrong</div>
                         </div>
+                    </div>
+                    <div style="margin-top: 10px; text-align: center; font-size: 0.8em; color: #7f8c8d;">
+                        Model: <span id="modelType">Not trained</span>
                     </div>
                 </div>
             </div>
