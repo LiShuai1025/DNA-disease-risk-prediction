@@ -6,48 +6,45 @@ class DiseaseRiskModel {
         this.modelInfo = {
             inputSize: 100,
             numericalFeatures: 7,
-            hiddenUnits: 64,
-            version: '2.0'
+            hiddenUnits: 32, // Reduced for performance
+            version: '2.1'
         };
     }
 
-    // Create LSTM model
+    // Create LSTM model (simplified for performance)
     async createModel() {
         try {
-            // Sequence input branch
+            // Simplified model architecture
             const sequenceInput = tf.input({shape: [this.modelInfo.inputSize], name: 'sequence_input'});
             
             const embedding = tf.layers.embedding({
                 inputDim: 4,
-                outputDim: 32,
+                outputDim: 16, // Reduced embedding
                 inputLength: this.modelInfo.inputSize
             }).apply(sequenceInput);
             
             const lstmLayer = tf.layers.lstm({
                 units: this.modelInfo.hiddenUnits,
-                dropout: 0.2,
-                recurrentDropout: 0.2,
+                dropout: 0.1, // Reduced dropout
+                recurrentDropout: 0.1,
                 returnSequences: false
             }).apply(embedding);
             
-            // Numerical features input branch
             const numericalInput = tf.input({shape: [this.modelInfo.numericalFeatures], name: 'numerical_input'});
             const numericalDense = tf.layers.dense({
-                units: 16,
+                units: 8, // Reduced units
                 activation: 'relu'
             }).apply(numericalInput);
             
-            // Merge branches
             const concatenated = tf.layers.concatenate().apply([lstmLayer, numericalDense]);
             
             const dense1 = tf.layers.dense({
-                units: 32,
+                units: 16, // Reduced units
                 activation: 'relu'
             }).apply(concatenated);
             
-            const dropout = tf.layers.dropout({rate: 0.3}).apply(dense1);
+            const dropout = tf.layers.dropout({rate: 0.2}).apply(dense1);
             
-            // Output layer
             const output = tf.layers.dense({
                 units: 3,
                 activation: 'softmax',
@@ -65,7 +62,7 @@ class DiseaseRiskModel {
                 metrics: ['accuracy']
             });
             
-            console.log('LSTM model created successfully');
+            console.log('Optimized LSTM model created successfully');
             return this.model;
             
         } catch (error) {
@@ -74,42 +71,56 @@ class DiseaseRiskModel {
         }
     }
 
-    // Train the model
-    async trainModel(sequences, numericalFeatures, labels, epochs = 50) {
+    // Train model with progress callback
+    async trainModel(sequences, numericalFeatures, labels, epochs = 20, progressCallback = null) {
         if (!this.model) {
             await this.createModel();
         }
 
         try {
-            // Prepare data
             const sequenceTensor = tf.tensor2d(sequences, [sequences.length, this.modelInfo.inputSize]);
             const featuresTensor = tf.tensor2d(numericalFeatures, [numericalFeatures.length, this.modelInfo.numericalFeatures]);
             const labelsTensor = tf.oneHot(labels, 3);
 
-            // Train model
-            const history = await this.model.fit([sequenceTensor, featuresTensor], labelsTensor, {
-                epochs: epochs,
-                batchSize: 16,
-                validationSplit: 0.2,
-                verbose: 0,
-                callbacks: {
-                    onEpochEnd: (epoch, logs) => {
-                        const progress = ((epoch + 1) / epochs * 100).toFixed(1);
-                        updateStatus(`Training: ${progress}% complete - Loss: ${logs.loss.toFixed(4)}`);
+            // Custom training loop for progress updates
+            const batchSize = 8; // Smaller batch size
+            const numBatches = Math.ceil(sequences.length / batchSize);
+            
+            for (let epoch = 0; epoch < epochs; epoch++) {
+                let totalLoss = 0;
+                
+                for (let i = 0; i < numBatches; i++) {
+                    const start = i * batchSize;
+                    const end = Math.min(start + batchSize, sequences.length);
+                    
+                    const batchSequences = sequenceTensor.slice([start, 0], [end - start, -1]);
+                    const batchFeatures = featuresTensor.slice([start, 0], [end - start, -1]);
+                    const batchLabels = labelsTensor.slice([start, 0], [end - start, -1]);
+                    
+                    const history = await this.model.trainOnBatch([batchSequences, batchFeatures], batchLabels);
+                    totalLoss += history[0];
+                    
+                    // Clean up batch tensors
+                    tf.dispose([batchSequences, batchFeatures, batchLabels]);
+                    
+                    // Update progress
+                    if (progressCallback) {
+                        const batchProgress = ((epoch * numBatches + i + 1) / (epochs * numBatches)) * 100;
+                        progressCallback(Math.min(100, Math.round(batchProgress)));
                     }
+                    
+                    // Yield to prevent blocking
+                    await tf.nextFrame();
                 }
-            });
+                
+                console.log(`Epoch ${epoch + 1}/${epochs}, Loss: ${(totalLoss / numBatches).toFixed(4)}`);
+            }
 
             // Clean up tensors
-            sequenceTensor.dispose();
-            featuresTensor.dispose();
-            labelsTensor.dispose();
+            tf.dispose([sequenceTensor, featuresTensor, labelsTensor]);
 
             this.isTrained = true;
-            this.trainingHistory = history;
-            
             console.log('Model training completed');
-            return history;
             
         } catch (error) {
             console.error('Error training model:', error);
@@ -117,36 +128,50 @@ class DiseaseRiskModel {
         }
     }
 
-    // Batch prediction
-    async predictBatch(sequences, numericalFeatures) {
+    // Batch prediction with progress
+    async predictBatch(sequences, numericalFeatures, progressCallback = null) {
         if (!this.isTrained) {
             throw new Error('Model not trained');
         }
 
         try {
-            const sequenceTensor = tf.tensor2d(sequences, [sequences.length, this.modelInfo.inputSize]);
-            const featuresTensor = tf.tensor2d(numericalFeatures, [numericalFeatures.length, this.modelInfo.numericalFeatures]);
-            
-            const predictions = this.model.predict([sequenceTensor, featuresTensor]);
-            const predictionData = await predictions.data();
-            
-            // Clean up tensors
-            sequenceTensor.dispose();
-            featuresTensor.dispose();
-            predictions.dispose();
-            
-            // Convert prediction data to risk levels
             const results = [];
-            for (let i = 0; i < sequences.length; i++) {
-                const startIdx = i * 3;
-                const probs = Array.from(predictionData.slice(startIdx, startIdx + 3));
-                const predictedClass = probs.indexOf(Math.max(...probs));
+            const batchSize = 10; // Smaller batches for responsiveness
+            
+            for (let i = 0; i < sequences.length; i += batchSize) {
+                const batchSequences = sequences.slice(i, i + batchSize);
+                const batchFeatures = numericalFeatures.slice(i, i + batchSize);
                 
-                results.push({
-                    predictedRisk: dataLoader.riskLabels[predictedClass],
-                    confidence: Math.max(...probs),
-                    probabilities: probs
-                });
+                const sequenceTensor = tf.tensor2d(batchSequences, [batchSequences.length, this.modelInfo.inputSize]);
+                const featuresTensor = tf.tensor2d(batchFeatures, [batchFeatures.length, this.modelInfo.numericalFeatures]);
+                
+                const predictions = this.model.predict([sequenceTensor, featuresTensor]);
+                const predictionData = await predictions.data();
+                
+                // Process batch results
+                for (let j = 0; j < batchSequences.length; j++) {
+                    const startIdx = j * 3;
+                    const probs = Array.from(predictionData.slice(startIdx, startIdx + 3));
+                    const predictedClass = probs.indexOf(Math.max(...probs));
+                    
+                    results.push({
+                        predictedRisk: dataLoader.riskLabels[predictedClass],
+                        confidence: Math.max(...probs),
+                        probabilities: probs
+                    });
+                }
+                
+                // Clean up
+                tf.dispose([sequenceTensor, featuresTensor, predictions]);
+                
+                // Update progress
+                if (progressCallback) {
+                    const progress = ((i + batchSize) / sequences.length) * 100;
+                    progressCallback(Math.min(100, Math.round(progress)));
+                }
+                
+                // Yield to prevent blocking
+                await tf.nextFrame();
             }
             
             return results;
@@ -157,12 +182,10 @@ class DiseaseRiskModel {
         }
     }
 
-    // Get model information
     getModelInfo() {
         return this.modelInfo;
     }
 
-    // Get training history
     getTrainingHistory() {
         return this.trainingHistory;
     }
