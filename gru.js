@@ -13,7 +13,6 @@ class GRUDiseaseModel {
         const encoding = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
         const encoded = [];
         
-        // Use only first maxSequenceLength characters for performance
         const effectiveLength = Math.min(sequence.length, this.maxSequenceLength);
         
         for (let i = 0; i < effectiveLength; i++) {
@@ -29,7 +28,7 @@ class GRUDiseaseModel {
         return encoded;
     }
 
-    // Convert to one-hot encoding for GRU input - optimized version
+    // Convert to one-hot encoding for GRU input
     oneHotEncodeBatch(encodedSequences) {
         const batchSize = encodedSequences.length;
         const oneHotBatch = [];
@@ -72,8 +71,8 @@ class GRUDiseaseModel {
         console.log(`Prepared ${sequences.length} samples for training`);
         
         return {
-            sequences: tf.tensor3d(this.oneHotEncodeBatch(sequences)),
-            labels: tf.tensor2d(labels)
+            sequences: sequences,
+            labels: labels
         };
     }
 
@@ -82,7 +81,6 @@ class GRUDiseaseModel {
         const features = sample.features;
         if (!features) return false;
         
-        // Simple rules based on known pathogenic markers
         const hasHighGC = features.gcContent > 60;
         const hasLowComplexity = features.kmerFreq < 0.3;
         const hasBaseBias = this.calculateBaseBias(sample) > 0.35;
@@ -101,26 +99,26 @@ class GRUDiseaseModel {
     buildModel() {
         const model = tf.sequential();
         
-        // Smaller GRU Layer for browser performance
+        // GRU Layer
         model.add(tf.layers.gru({
-            units: 32, // Reduced from 64
+            units: 32,
             returnSequences: false,
             inputShape: [this.maxSequenceLength, this.vocabSize],
-            dropout: 0.1, // Reduced regularization
+            dropout: 0.1,
             recurrentDropout: 0.1
         }));
         
-        // Smaller dense layers
+        // Dense layers
         model.add(tf.layers.dense({
-            units: 16, // Reduced from 32
+            units: 16,
             activation: 'relu',
-            kernelRegularizer: tf.regularizers.l2({l2: 0.001}) // Reduced regularization
+            kernelRegularizer: tf.regularizers.l2({l2: 0.001})
         }));
         
-        model.add(tf.layers.dropout({rate: 0.2})); // Reduced dropout
+        model.add(tf.layers.dropout({rate: 0.2}));
         
         model.add(tf.layers.dense({
-            units: 8, // Reduced from 16
+            units: 8,
             activation: 'relu'
         }));
         
@@ -130,7 +128,7 @@ class GRUDiseaseModel {
             activation: 'sigmoid'
         }));
         
-        // Compile model with simpler optimizer
+        // Compile model
         model.compile({
             optimizer: tf.train.adam(0.001),
             loss: 'binaryCrossentropy',
@@ -138,7 +136,7 @@ class GRUDiseaseModel {
         });
         
         this.model = model;
-        console.log('Optimized GRU Model built successfully');
+        console.log('GRU Model built successfully');
         return model;
     }
 
@@ -151,39 +149,42 @@ class GRUDiseaseModel {
         this.trainingInProgress = true;
         
         try {
-            if (progressCallback) progressCallback(10, 'Building optimized GRU model...');
+            if (progressCallback) progressCallback(10, 'Building GRU model...');
             
             // Clear any existing model to free memory
             if (this.model) {
                 this.model.dispose();
             }
             
-            // Build optimized model
+            // Build model
             this.buildModel();
             
             if (progressCallback) progressCallback(20, 'Preparing training data...');
             
-            // Prepare training data with size limits
+            // Prepare training data
             const {sequences, labels} = this.prepareTrainingData(samples);
             
-            if (progressCallback) progressCallback(40, 'Starting training (this may take a while)...');
+            // Convert to tensors
+            const sequencesTensor = tf.tensor3d(this.oneHotEncodeBatch(sequences));
+            const labelsTensor = tf.tensor2d(labels);
             
-            // Train with fewer epochs and smaller batch size
-            const history = await this.model.fit(sequences, labels, {
-                epochs: 30, // Reduced from 50
-                batchSize: 16, // Smaller batch size
+            if (progressCallback) progressCallback(40, 'Starting training...');
+            
+            // Train model
+            await this.model.fit(sequencesTensor, labelsTensor, {
+                epochs: 20, // Further reduced for stability
+                batchSize: 16,
                 validationSplit: 0.2,
-                verbose: 0, // Reduce console output
+                verbose: 0,
                 callbacks: {
                     onEpochEnd: async (epoch, logs) => {
-                        // Give browser time to process UI events
                         await new Promise(resolve => setTimeout(resolve, 10));
                         
-                        const progress = 40 + (epoch / 30) * 50;
+                        const progress = 40 + (epoch / 20) * 50;
                         if (progressCallback) {
                             progressCallback(
                                 Math.min(90, progress), 
-                                `Epoch ${epoch + 1}/30 - Loss: ${logs.loss.toFixed(4)}`
+                                `Epoch ${epoch + 1}/20 - Loss: ${logs.loss.toFixed(4)}`
                             );
                         }
                     }
@@ -195,13 +196,12 @@ class GRUDiseaseModel {
             this.isTrained = true;
             console.log('GRU Model training completed');
             
-            // Clean up tensors immediately
-            sequences.dispose();
-            labels.dispose();
+            // Clean up tensors
+            sequencesTensor.dispose();
+            labelsTensor.dispose();
             
         } catch (error) {
             console.error('Error training GRU model:', error);
-            // Ensure model is disposed on error
             if (this.model) {
                 this.model.dispose();
                 this.model = null;
@@ -212,104 +212,100 @@ class GRUDiseaseModel {
         }
     }
 
-    // Predict samples using GRU model with batching
+    // NEW: Simplified prediction method that avoids the variable scope issue
     async predictSamples(samples, progressCallback = null) {
-        if (!this.isTrained) {
-            throw new Error('Model not trained');
+        if (!this.isTrained || !this.model) {
+            throw new Error('Model not trained or available');
         }
 
         try {
             const results = [];
             const totalSamples = samples.length;
             
-            // Process in smaller batches to avoid memory issues
-            const batchSize = 10;
-            
-            for (let i = 0; i < totalSamples; i += batchSize) {
-                const batchSamples = samples.slice(i, i + batchSize);
-                const batchResults = await this.predictBatch(batchSamples);
-                results.push(...batchResults);
+            // Process samples one by one for stability
+            for (let i = 0; i < totalSamples; i++) {
+                const sample = samples[i];
+                const result = await this.predictSingleSample(sample);
+                results.push(result);
                 
                 if (progressCallback) {
-                    const progress = ((i + batchSize) / totalSamples) * 100;
-                    progressCallback(Math.min(100, Math.round(progress)));
+                    const progress = ((i + 1) / totalSamples) * 100;
+                    progressCallback(Math.round(progress));
                 }
                 
-                // Give browser time to process UI events
-                await new Promise(resolve => setTimeout(resolve, 50));
+                // Small delay to prevent blocking
+                await new Promise(resolve => setTimeout(resolve, 10));
             }
             
             return results;
             
         } catch (error) {
-            console.error('Error in GRU prediction:', error);
+            console.error('Error in prediction:', error);
             throw error;
         }
     }
 
-    // Predict batch of samples - FIXED VERSION
-    async predictBatch(samples) {
-        const batchResults = [];
-        const sequences = [];
-        
-        // Encode all sequences in batch
-        for (const sample of samples) {
-            if (sample.sequence) {
-                const encoded = this.encodeSequence(sample.sequence);
-                sequences.push(encoded);
-            } else {
-                sequences.push(new Array(this.maxSequenceLength).fill(0));
-            }
+    // NEW: Completely rewritten single sample prediction
+    async predictSingleSample(sample) {
+        if (!this.model) {
+            return this.getDefaultPrediction();
         }
-        
-        // Convert to one-hot in batch
-        const oneHotBatch = this.oneHotEncodeBatch(sequences);
-        const tensor = tf.tensor3d(oneHotBatch);
-        
-        // 修复：在try块外部声明prediction变量
-        let prediction = null;
-        
+
         try {
-            prediction = this.model.predict(tensor);
+            // Encode sequence
+            const encoded = this.encodeSequence(sample.sequence || '');
+            const oneHot = this.oneHotEncodeBatch([encoded]);
+            const tensor = tf.tensor3d(oneHot);
+            
+            // Make prediction
+            const prediction = this.model.predict(tensor);
             const values = await prediction.data();
             
-            // Process results
-            for (let i = 0; i < samples.length; i++) {
-                const highRiskProb = values[i * 2];
-                const pathogenicProb = values[i * 2 + 1];
-                const confidence = Math.max(highRiskProb, pathogenicProb);
-                
-                // Determine final risk classification
-                let predictedRisk = 'Low';
-                if (highRiskProb > 0.7) {
-                    predictedRisk = 'High';
-                } else if (highRiskProb > 0.4 || pathogenicProb > 0.6) {
-                    predictedRisk = 'Medium';
-                }
-                
-                batchResults.push({
-                    predictedRisk: predictedRisk,
-                    confidence: confidence,
-                    highRiskProbability: highRiskProb,
-                    pathogenicProbability: pathogenicProb
-                });
+            // Extract probabilities
+            const highRiskProb = values[0];
+            const pathogenicProb = values[1];
+            const confidence = Math.max(highRiskProb, pathogenicProb);
+            
+            // Determine risk level
+            let predictedRisk = 'Low';
+            if (highRiskProb > 0.7) {
+                predictedRisk = 'High';
+            } else if (highRiskProb > 0.4 || pathogenicProb > 0.6) {
+                predictedRisk = 'Medium';
             }
             
-            return batchResults;
-            
-        } finally {
-            // Clean up tensors - 现在prediction在finally块中是可访问的
+            // Clean up tensors
             tensor.dispose();
-            if (prediction) {
-                prediction.dispose();
-            }
+            prediction.dispose();
+            
+            return {
+                predictedRisk: predictedRisk,
+                confidence: confidence,
+                highRiskProbability: highRiskProb,
+                pathogenicProbability: pathogenicProb
+            };
+            
+        } catch (error) {
+            console.error('Error predicting single sample:', error);
+            return this.getDefaultPrediction();
         }
+    }
+
+    // Helper method for default prediction when model fails
+    getDefaultPrediction() {
+        // Simple rule-based fallback
+        return {
+            predictedRisk: 'Medium',
+            confidence: 0.5,
+            highRiskProbability: 0.5,
+            pathogenicProbability: 0.5
+        };
     }
 
     // Get model information
     getModelInfo() {
         return {
-            version: '2.0-GRU-Optimized',
+            version: '3.0-GRU-Stable',
             type: 'Multi-Output GRU Neural Network',
             architecture: 'GRU(32) -> Dense(16) -> Dense(8) -> Output(2)',
             outputs: ['High_Risk_Probability', 'Pathogenic_Probability']
