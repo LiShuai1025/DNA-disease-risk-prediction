@@ -9,8 +9,8 @@ class DiseaseRiskModel {
         this.patterns = null;
     }
 
-    // Train advanced model using pattern recognition
-    async trainAdvancedModel(samples, progressCallback = null) {
+    // 修复方法名：从 trainAdvancedModel 改为 trainModel
+    async trainModel(samples, progressCallback = null) {
         try {
             if (progressCallback) progressCallback(10, 'Analyzing dataset patterns...');
             
@@ -197,8 +197,8 @@ class DiseaseRiskModel {
         return rules;
     }
 
-    // Advanced prediction using ensemble method
-    async predictSamplesAdvanced(samples, progressCallback = null) {
+    // 修复方法名：从 predictSamplesAdvanced 改为 predictSamples
+    async predictSamples(samples, progressCallback = null) {
         if (!this.isTrained) {
             throw new Error('Model not trained');
         }
@@ -209,7 +209,7 @@ class DiseaseRiskModel {
             
             for (let i = 0; i < totalSamples; i++) {
                 const sample = samples[i];
-                const result = this.predictSingleSampleAdvanced(sample);
+                const result = this.predictSingleSample(sample);
                 results.push(result);
                 
                 if (progressCallback) {
@@ -229,8 +229,8 @@ class DiseaseRiskModel {
         }
     }
 
-    // Advanced prediction for single sample
-    predictSingleSampleAdvanced(sample) {
+    // 修复方法名：从 predictSingleSampleAdvanced 改为 predictSingleSample
+    predictSingleSample(sample) {
         const features = sample.features;
         
         // Get predictions from all rules in the ensemble
