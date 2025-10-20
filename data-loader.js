@@ -395,3 +395,77 @@ class DataLoader {
 }
 
 const dataLoader = new DataLoader();
+// Parse CSV content
+parseCSV(csvContent) {
+    const results = Papa.parse(csvContent, {
+        header: true,
+        skipEmptyLines: true,
+        transform: (value) => {
+            // Convert numeric strings to numbers
+            if (!isNaN(value) && value.trim() !== '') {
+                return parseFloat(value);
+            }
+            return value;
+        }
+    });
+    
+    if (results.errors.length > 0) {
+        throw new Error(`CSV parsing error: ${results.errors[0].message}`);
+    }
+    
+    if (results.data.length === 0) {
+        throw new Error('No data found in CSV file');
+    }
+    
+    return results.data;
+}
+
+// Process parsed data into samples
+processParsedData(parsedData) {
+    this.samples = [];
+    
+    parsedData.forEach((row, index) => {
+        // Determine available columns and map them
+        const sample = {
+            id: row.Sample_ID || `SAMPLE_${index + 1}`,
+            name: row.Sample_ID || `DNA_${this.generateName()}`,
+            sequence: row.Sequence || '',
+            features: {},
+            actualRisk: null,
+            predictedRisk: null,
+            confidence: null,
+            isCorrect: null
+        };
+        
+        // Extract features from available columns
+        if (row.GC_Content !== undefined) sample.features.gcContent = parseFloat(row.GC_Content);
+        if (row.Sequence_Length !== undefined) sample.features.sequenceLength = parseInt(row.Sequence_Length);
+        if (row.Num_A !== undefined) sample.features.numA = parseInt(row.Num_A);
+        if (row.Num_T !== undefined) sample.features.numT = parseInt(row.Num_T);
+        if (row.Num_C !== undefined) sample.features.numC = parseInt(row.Num_C);
+        if (row.Num_G !== undefined) sample.features.numG = parseInt(row.Num_G);
+        if (row.kmer_3_freq !== undefined) sample.features.kmerFreq = parseFloat(row.kmer_3_freq);
+        
+        // Extract risk label
+        if (row.Disease_Risk) {
+            sample.actualRisk = this.normalizeRiskLabel(row.Disease_Risk);
+        } else if (row.Class_Label) {
+            // Try to infer risk from class label
+            sample.actualRisk = this.inferRiskFromClass(row.Class_Label);
+        }
+        
+        // If no risk label is available, generate a random one for demo purposes
+        if (!sample.actualRisk) {
+            sample.actualRisk = this.riskLabels[Math.floor(Math.random() * this.riskLabels.length)];
+        }
+        
+        // Calculate missing features from sequence if available
+        if (sample.sequence && sample.sequence.length > 0) {
+            this.calculateFeaturesFromSequence(sample);
+        }
+        
+        this.samples.push(sample);
+    });
+    
+    console.log(`Processed ${this.samples.length} samples`);
+}
