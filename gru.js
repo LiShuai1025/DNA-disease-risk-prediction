@@ -1,91 +1,23 @@
-class EnhancedGRUDiseaseModel {
+class OptimizedGRUDiseaseModel {
     constructor() {
         this.model = null;
         this.isTrained = false;
-        this.maxSequenceLength = 150; // 增加序列长度
+        this.maxSequenceLength = 100; // 固定序列长度
         this.vocabSize = 4;
-        this.numOutputs = 3; // 改为3类分类
+        this.numOutputs = 3; // 3分类问题
         this.trainingInProgress = false;
-        this.classWeights = null; // 用于处理类别不平衡
+        this.featureSize = 10; // 手工特征数量
+        this.useCache = true; // 启用预测缓存
+        this.predictionCache = new Map(); // 预测缓存
     }
 
-    // 更丰富的特征提取
-    extractAdvancedFeatures(sequence) {
-        const features = {};
-        
-        // GC含量
-        const gcCount = (sequence.match(/[GC]/gi) || []).length;
-        features.gcContent = (gcCount / sequence.length) * 100;
-        
-        // AT含量
-        const atCount = (sequence.match(/[AT]/gi) || []).length;
-        features.atContent = (atCount / sequence.length) * 100;
-        
-        // 序列熵（复杂度）
-        features.entropy = this.calculateEntropy(sequence);
-        
-        // 重复模式检测
-        features.repeatPatterns = this.detectRepeatPatterns(sequence);
-        
-        // k-mer频率（2-mer, 3-mer, 4-mer）
-        features.kmer2Freq = this.calculateKmerFrequency(sequence, 2);
-        features.kmer3Freq = this.calculateKmerFrequency(sequence, 3);
-        features.kmer4Freq = this.calculateKmerFrequency(sequence, 4);
-        
-        return features;
-    }
-
-    calculateEntropy(sequence) {
-        const freq = {};
-        for (let base of sequence) {
-            freq[base] = (freq[base] || 0) + 1;
+    // 优化的序列编码 - 预计算编码
+    encodeSequence(sequence) {
+        // 检查缓存
+        if (this.useCache && this.predictionCache.has(sequence)) {
+            return this.predictionCache.get(sequence).encoded;
         }
         
-        let entropy = 0;
-        const total = sequence.length;
-        for (let base in freq) {
-            const p = freq[base] / total;
-            entropy -= p * Math.log2(p);
-        }
-        
-        return entropy;
-    }
-
-    calculateKmerFrequency(sequence, k) {
-        const kmers = new Map();
-        for (let i = 0; i <= sequence.length - k; i++) {
-            const kmer = sequence.substring(i, i + k);
-            kmers.set(kmer, (kmers.get(kmer) || 0) + 1);
-        }
-        return kmers.size / (sequence.length - k + 1);
-    }
-
-    detectRepeatPatterns(sequence) {
-        let repeatScore = 0;
-        
-        // 检测简单重复
-        for (let k = 2; k <= 4; k++) {
-            for (let i = 0; i <= sequence.length - k * 3; i++) {
-                const pattern = sequence.substring(i, i + k);
-                let repeats = 1;
-                for (let j = i + k; j <= sequence.length - k; j += k) {
-                    if (sequence.substring(j, j + k) === pattern) {
-                        repeats++;
-                    } else {
-                        break;
-                    }
-                }
-                if (repeats >= 3) {
-                    repeatScore += repeats;
-                }
-            }
-        }
-        
-        return repeatScore;
-    }
-
-    // 改进的序列编码
-    encodeSequenceWithFeatures(sequence, additionalFeatures = {}) {
         const encoding = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
         const encoded = [];
         
@@ -101,142 +33,199 @@ class EnhancedGRUDiseaseModel {
             encoded.push(0);
         }
         
-        return {
-            sequence: encoded,
-            features: additionalFeatures
-        };
+        return encoded;
     }
 
-    // 更复杂的模型架构
-    buildEnhancedModel() {
+    // 批量编码 - 显著提高速度
+    encodeSequenceBatch(sequences) {
+        return sequences.map(seq => this.encodeSequence(seq));
+    }
+
+    // 批量one-hot编码
+    oneHotEncodeBatch(encodedSequences) {
+        const batchSize = encodedSequences.length;
+        const oneHotBatch = new Array(batchSize);
+        
+        for (let i = 0; i < batchSize; i++) {
+            const oneHot = new Array(this.maxSequenceLength);
+            for (let j = 0; j < this.maxSequenceLength; j++) {
+                const vector = new Array(this.vocabSize).fill(0);
+                vector[encodedSequences[i][j]] = 1;
+                oneHot[j] = vector;
+            }
+            oneHotBatch[i] = oneHot;
+        }
+        
+        return oneHotBatch;
+    }
+
+    // 提取关键特征用于模型输入
+    extractKeyFeatures(sample) {
+        const features = sample.features || {};
+        
+        // 选择最重要的10个特征
+        return [
+            features.gcContent / 100, // 归一化
+            features.kmerFreq || 0.5,
+            features.entropy ? features.entropy / 4 : 0.5, // 近似归一化
+            features.repeatScore ? features.repeatScore / 10 : 0,
+            features.gcDinucTotal || 0,
+            (features.numA || 0) / (features.sequenceLength || 1),
+            (features.numT || 0) / (features.sequenceLength || 1),
+            (features.numC || 0) / (features.sequenceLength || 1),
+            (features.numG || 0) / (features.sequenceLength || 1),
+            features.sequenceLength ? Math.min(features.sequenceLength, 200) / 200 : 0.5
+        ];
+    }
+
+    // 构建更高效的模型
+    buildEfficientModel() {
         const model = tf.sequential();
         
-        // 输入层 - 序列数据
+        // 更小的GRU层 - 平衡性能和准确性
         model.add(tf.layers.gru({
-            units: 64,
-            returnSequences: true,
+            units: 24, // 减少单元数提高速度
+            returnSequences: false,
             inputShape: [this.maxSequenceLength, this.vocabSize],
-            dropout: 0.3,
-            recurrentDropout: 0.2
-        }));
-        
-        // 第二层GRU
-        model.add(tf.layers.gru({
-            units: 32,
             dropout: 0.2,
             recurrentDropout: 0.1
         }));
         
-        // 特征输入层（并行）
-        const featureInput = tf.input({shape: [6]}); // 6个额外特征
+        // 添加批归一化加速训练
+        model.add(tf.layers.batchNormalization());
         
-        // 合并序列特征和手工特征
-        const sequenceOutput = model.outputs[0];
-        const featureDense = tf.layers.dense({
-            units: 8,
+        // 更小的全连接层
+        model.add(tf.layers.dense({
+            units: 12,
             activation: 'relu'
-        }).apply(featureInput);
+        }));
         
-        const concatenated = tf.layers.concatenate().apply([sequenceOutput, featureDense]);
+        model.add(tf.layers.dropout({rate: 0.3}));
         
-        // 全连接层
-        const hidden = tf.layers.dense({
-            units: 16,
-            activation: 'relu',
-            kernelRegularizer: tf.regularizers.l2({l2: 0.01})
-        }).apply(concatenated);
-        
-        const dropout = tf.layers.dropout({rate: 0.3}).apply(hidden);
-        
-        // 输出层 - 3个类别
-        const output = tf.layers.dense({
+        // 输出层 - 3分类
+        model.add(tf.layers.dense({
             units: this.numOutputs,
             activation: 'softmax'
-        }).apply(dropout);
+        }));
         
-        const enhancedModel = tf.model({
-            inputs: [model.inputs[0], featureInput],
-            outputs: output
-        });
-        
-        enhancedModel.compile({
-            optimizer: tf.train.adam(0.0005), // 更小的学习率
+        // 使用更快的优化器
+        model.compile({
+            optimizer: tf.train.adam(0.001),
             loss: 'categoricalCrossentropy',
             metrics: ['accuracy']
         });
         
-        this.model = enhancedModel;
-        console.log('Enhanced GRU Model built successfully');
-        return enhancedModel;
+        this.model = model;
+        console.log('Efficient GRU Model built successfully');
+        return model;
     }
 
-    // 计算类别权重处理不平衡数据
-    calculateClassWeights(samples) {
-        const riskCounts = {High: 0, Medium: 0, Low: 0};
-        samples.forEach(sample => {
-            riskCounts[sample.actualRisk]++;
-        });
+    // 准备训练数据
+    prepareTrainingData(samples) {
+        const sequences = [];
+        const features = [];
+        const labels = [];
         
-        const total = samples.length;
-        this.classWeights = {
-            0: total / (3 * riskCounts.High),   // High risk
-            1: total / (3 * riskCounts.Medium), // Medium risk  
-            2: total / (3 * riskCounts.Low)     // Low risk
+        // 限制数据集大小但保持平衡
+        const maxSamples = Math.min(samples.length, 150);
+        
+        for (let i = 0; i < maxSamples; i++) {
+            const sample = samples[i];
+            if (sample.sequence && sample.actualRisk) {
+                sequences.push(sample.sequence);
+                features.push(this.extractKeyFeatures(sample));
+                
+                // 3类标签
+                const labelIndex = {'High': 0, 'Medium': 1, 'Low': 2}[sample.actualRisk];
+                const oneHot = new Array(3).fill(0);
+                oneHot[labelIndex] = 1;
+                labels.push(oneHot);
+            }
+        }
+        
+        console.log(`Prepared ${sequences.length} samples for training`);
+        
+        // 批量编码序列
+        const encodedSequences = this.encodeSequenceBatch(sequences);
+        const oneHotSequences = this.oneHotEncodeBatch(encodedSequences);
+        
+        return {
+            sequences: tf.tensor3d(oneHotSequences),
+            features: tf.tensor2d(features),
+            labels: tf.tensor2d(labels)
         };
-        
-        console.log('Class weights:', this.classWeights);
     }
 
     // 改进的训练方法
-    async trainEnhancedModel(samples, progressCallback = null) {
+    async trainModel(samples, progressCallback = null) {
         if (this.trainingInProgress) {
             throw new Error('Training already in progress');
         }
         
         this.trainingInProgress = true;
+        this.predictionCache.clear(); // 清除缓存
         
         try {
-            if (progressCallback) progressCallback(10, 'Building enhanced model...');
+            if (progressCallback) progressCallback(10, 'Building efficient model...');
             
+            // 清理现有模型
             if (this.model) {
                 this.model.dispose();
             }
             
-            this.buildEnhancedModel();
-            this.calculateClassWeights(samples);
+            this.buildEfficientModel();
             
-            if (progressCallback) progressCallback(20, 'Preparing enhanced features...');
+            if (progressCallback) progressCallback(20, 'Preparing training data...');
             
-            // 准备增强的训练数据
-            const {sequences, features, labels} = this.prepareEnhancedTrainingData(samples);
+            const {sequences, features, labels} = this.prepareTrainingData(samples);
             
-            if (progressCallback) progressCallback(40, 'Starting enhanced training...');
+            if (progressCallback) progressCallback(40, 'Starting training...');
             
-            // 训练更多轮次
-            await this.model.fit([sequences, features], labels, {
-                epochs: 50,
-                batchSize: 16,
-                validationSplit: 0.2,
-                classWeight: this.classWeights,
-                callbacks: {
-                    onEpochEnd: async (epoch, logs) => {
-                        await new Promise(resolve => setTimeout(resolve, 10));
-                        
-                        const progress = 40 + (epoch / 50) * 50;
-                        if (progressCallback) {
-                            progressCallback(
-                                Math.min(90, progress), 
-                                `Epoch ${epoch + 1}/50 - Loss: ${logs.loss.toFixed(4)}, Acc: ${logs.acc.toFixed(4)}`
-                            );
-                        }
-                    }
+            let bestAccuracy = 0;
+            let patience = 8;
+            let patienceCounter = 0;
+            
+            // 手动实现训练循环以便早停
+            for (let epoch = 0; epoch < 50; epoch++) {
+                const history = await this.model.fit(sequences, labels, {
+                    epochs: 1,
+                    batchSize: 16,
+                    validationSplit: 0.2,
+                    verbose: 0
+                });
+                
+                const accuracy = history.history.acc[0];
+                const valAccuracy = history.history.val_acc ? history.history.val_acc[0] : accuracy;
+                
+                // 早停逻辑
+                if (valAccuracy > bestAccuracy) {
+                    bestAccuracy = valAccuracy;
+                    patienceCounter = 0;
+                } else {
+                    patienceCounter++;
                 }
-            });
+                
+                if (patienceCounter >= patience) {
+                    console.log(`Early stopping at epoch ${epoch + 1}`);
+                    break;
+                }
+                
+                if (progressCallback) {
+                    const progress = 40 + ((epoch + 1) / 50) * 50;
+                    progressCallback(
+                        Math.min(95, progress), 
+                        `Epoch ${epoch + 1} - Accuracy: ${accuracy.toFixed(4)}, Val: ${valAccuracy.toFixed(4)}`
+                    );
+                }
+                
+                // 让浏览器处理其他任务
+                await new Promise(resolve => setTimeout(resolve, 10));
+            }
             
-            if (progressCallback) progressCallback(100, 'Enhanced training completed');
+            if (progressCallback) progressCallback(100, 'Training completed');
             
             this.isTrained = true;
-            console.log('Enhanced GRU Model training completed');
+            console.log('Model training completed');
             
             // 清理张量
             sequences.dispose();
@@ -244,7 +233,7 @@ class EnhancedGRUDiseaseModel {
             labels.dispose();
             
         } catch (error) {
-            console.error('Error training enhanced model:', error);
+            console.error('Error training model:', error);
             if (this.model) {
                 this.model.dispose();
                 this.model = null;
@@ -255,69 +244,8 @@ class EnhancedGRUDiseaseModel {
         }
     }
 
-    prepareEnhancedTrainingData(samples) {
-        const sequences = [];
-        const featureArray = [];
-        const labels = [];
-        
-        const maxSamples = Math.min(samples.length, 300);
-        
-        for (let i = 0; i < maxSamples; i++) {
-            const sample = samples[i];
-            if (sample.sequence && sample.actualRisk) {
-                // 提取高级特征
-                const advancedFeatures = this.extractAdvancedFeatures(sample.sequence);
-                
-                // 编码序列
-                const encoded = this.encodeSequenceWithFeatures(sample.sequence, advancedFeatures);
-                sequences.push(encoded.sequence);
-                
-                // 添加特征向量
-                featureArray.push([
-                    advancedFeatures.gcContent / 100, // 归一化
-                    advancedFeatures.atContent / 100,
-                    advancedFeatures.entropy / 4,     // 近似归一化
-                    advancedFeatures.repeatPatterns / 10,
-                    advancedFeatures.kmer2Freq,
-                    advancedFeatures.kmer3Freq
-                ]);
-                
-                // 3类标签
-                const labelIndex = {'High': 0, 'Medium': 1, 'Low': 2}[sample.actualRisk];
-                const oneHot = new Array(3).fill(0);
-                oneHot[labelIndex] = 1;
-                labels.push(oneHot);
-            }
-        }
-        
-        console.log(`Prepared ${sequences.length} enhanced samples for training`);
-        
-        return {
-            sequences: tf.tensor3d(this.oneHotEncodeBatch(sequences)),
-            features: tf.tensor2d(featureArray),
-            labels: tf.tensor2d(labels)
-        };
-    }
-
-    oneHotEncodeBatch(encodedSequences) {
-        const batchSize = encodedSequences.length;
-        const oneHotBatch = [];
-        
-        for (let i = 0; i < batchSize; i++) {
-            const oneHot = [];
-            for (let j = 0; j < this.maxSequenceLength; j++) {
-                const vector = new Array(this.vocabSize).fill(0);
-                vector[encodedSequences[i][j]] = 1;
-                oneHot.push(vector);
-            }
-            oneHotBatch.push(oneHot);
-        }
-        
-        return oneHotBatch;
-    }
-
-    // 改进的预测方法
-    async predictEnhancedSamples(samples, progressCallback = null) {
+    // 高速批量预测
+    async predictSamples(samples, progressCallback = null) {
         if (!this.isTrained) {
             throw new Error('Model not trained');
         }
@@ -326,101 +254,121 @@ class EnhancedGRUDiseaseModel {
             const results = [];
             const totalSamples = samples.length;
             
-            for (let i = 0; i < totalSamples; i++) {
-                const sample = samples[i];
-                const result = await this.predictEnhancedSingleSample(sample);
-                results.push(result);
+            // 使用更大的批处理大小提高速度
+            const batchSize = 20;
+            
+            for (let i = 0; i < totalSamples; i += batchSize) {
+                const batchSamples = samples.slice(i, i + batchSize);
+                const batchResults = await this.predictBatch(batchSamples);
+                results.push(...batchResults);
                 
                 if (progressCallback) {
-                    const progress = ((i + 1) / totalSamples) * 100;
-                    progressCallback(Math.round(progress));
+                    const progress = ((i + batchSize) / totalSamples) * 100;
+                    progressCallback(Math.min(100, Math.round(progress)));
                 }
-                
-                await new Promise(resolve => setTimeout(resolve, 10));
             }
             
             return results;
             
         } catch (error) {
-            console.error('Error in enhanced prediction:', error);
+            console.error('Error in prediction:', error);
             throw error;
         }
     }
 
-    async predictEnhancedSingleSample(sample) {
-        if (!this.model) {
-            return this.getDefaultPrediction();
+    // 优化的批量预测
+    async predictBatch(samples) {
+        const batchResults = [];
+        const sequences = [];
+        const featureList = [];
+        
+        // 准备批量数据
+        for (const sample of samples) {
+            // 检查缓存
+            if (this.useCache && this.predictionCache.has(sample.sequence)) {
+                batchResults.push(this.predictionCache.get(sample.sequence));
+                continue;
+            }
+            
+            sequences.push(sample.sequence || '');
+            featureList.push(this.extractKeyFeatures(sample));
         }
-
+        
+        // 如果没有需要预测的样本，直接返回缓存结果
+        if (sequences.length === 0) {
+            return batchResults;
+        }
+        
+        // 批量编码和预测
+        const encodedSequences = this.encodeSequenceBatch(sequences);
+        const oneHotSequences = this.oneHotEncodeBatch(encodedSequences);
+        
+        const sequenceTensor = tf.tensor3d(oneHotSequences);
+        const featureTensor = tf.tensor2d(featureList);
+        
         try {
-            // 提取特征
-            const advancedFeatures = this.extractAdvancedFeatures(sample.sequence || '');
-            const encoded = this.encodeSequenceWithFeatures(sample.sequence || '', advancedFeatures);
-            const oneHot = this.oneHotEncodeBatch([encoded.sequence]);
-            
-            const sequenceTensor = tf.tensor3d(oneHot);
-            const featureTensor = tf.tensor2d([[
-                advancedFeatures.gcContent / 100,
-                advancedFeatures.atContent / 100,
-                advancedFeatures.entropy / 4,
-                advancedFeatures.repeatPatterns / 10,
-                advancedFeatures.kmer2Freq,
-                advancedFeatures.kmer3Freq
-            ]]);
-            
-            // 预测
-            const prediction = this.model.predict([sequenceTensor, featureTensor]);
+            const prediction = this.model.predict(sequenceTensor);
             const values = await prediction.data();
             
-            // 解析结果
-            const probabilities = Array.from(values);
-            const maxIndex = probabilities.indexOf(Math.max(...probabilities));
-            const predictedRisk = ['High', 'Medium', 'Low'][maxIndex];
-            const confidence = probabilities[maxIndex];
+            let resultIndex = 0;
+            for (let i = 0; i < samples.length; i++) {
+                // 如果这个样本使用了缓存，跳过
+                if (this.useCache && this.predictionCache.has(samples[i].sequence)) {
+                    continue;
+                }
+                
+                const startIdx = resultIndex * 3;
+                const probabilities = [
+                    values[startIdx],
+                    values[startIdx + 1], 
+                    values[startIdx + 2]
+                ];
+                
+                const maxIndex = probabilities.indexOf(Math.max(...probabilities));
+                const predictedRisk = ['High', 'Medium', 'Low'][maxIndex];
+                const confidence = probabilities[maxIndex];
+                
+                const result = {
+                    predictedRisk: predictedRisk,
+                    confidence: confidence,
+                    probabilities: {
+                        High: probabilities[0],
+                        Medium: probabilities[1],
+                        Low: probabilities[2]
+                    }
+                };
+                
+                // 缓存结果
+                if (this.useCache) {
+                    this.predictionCache.set(samples[i].sequence, result);
+                }
+                
+                batchResults.push(result);
+                resultIndex++;
+            }
             
-            // 清理
+            return batchResults;
+            
+        } finally {
+            // 清理张量
             sequenceTensor.dispose();
             featureTensor.dispose();
-            prediction.dispose();
-            
-            return {
-                predictedRisk: predictedRisk,
-                confidence: confidence,
-                probabilities: {
-                    High: probabilities[0],
-                    Medium: probabilities[1],
-                    Low: probabilities[2]
-                }
-            };
-            
-        } catch (error) {
-            console.error('Error predicting enhanced sample:', error);
-            return this.getDefaultPrediction();
+            if (prediction) {
+                prediction.dispose();
+            }
         }
     }
 
-    getDefaultPrediction() {
-        return {
-            predictedRisk: 'Medium',
-            confidence: 0.33,
-            probabilities: {
-                High: 0.33,
-                Medium: 0.34,
-                Low: 0.33
-            }
-        };
-    }
-
+    // 获取模型信息
     getModelInfo() {
         return {
-            version: '4.0-GRU-Enhanced',
-            type: 'Enhanced Multi-Output GRU Neural Network',
-            architecture: 'GRU(64)->GRU(32) + FeatureDense(8) -> Dense(16) -> Output(3)',
-            outputs: ['High', 'Medium', 'Low'],
-            features: 'GC Content, AT Content, Entropy, Repeat Patterns, k-mer frequencies'
+            version: '5.0-GRU-Optimized',
+            type: 'Efficient GRU Neural Network',
+            architecture: 'GRU(24) -> BatchNorm -> Dense(12) -> Output(3)',
+            features: 'Enhanced features with caching',
+            performance: 'Optimized for speed and accuracy'
         };
     }
 }
 
-// 替换原来的模型
-const diseaseModel = new EnhancedGRUDiseaseModel();
+const diseaseModel = new OptimizedGRUDiseaseModel();
