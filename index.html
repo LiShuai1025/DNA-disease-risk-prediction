@@ -293,6 +293,10 @@
             background: linear-gradient(90deg, #f39c12, #e67e22);
         }
         
+        .fill-low-risk {
+            background: linear-gradient(90deg, #27ae60, #219653);
+        }
+        
         .sample-stats {
             text-align: right;
             min-width: 100px;
@@ -489,6 +493,19 @@
             color: #2c3e50;
         }
         
+        .feature-explanation {
+            margin-top: 15px;
+            padding: 10px;
+            background: #e8f4fd;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+        
+        .feature-explanation ul {
+            margin: 5px 0;
+            padding-left: 20px;
+        }
+        
         @media (max-width: 1024px) {
             .content {
                 grid-template-columns: 1fr;
@@ -600,7 +617,7 @@
                             </div>
                             <div class="legend-item">
                                 <div class="legend-color legend-pathogenic"></div>
-                                <span>Pathogenic</span>
+                                <span>Medium Risk</span>
                             </div>
                         </div>
                     </div>
