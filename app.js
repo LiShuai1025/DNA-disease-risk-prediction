@@ -176,7 +176,7 @@ class DNADiseaseDashboard {
             
             // Update samples with predictions
             dataLoader.samples.forEach((sample, index) => {
-                if (results[index]) {
+                if (results && results[index]) {
                     sample.predictedRisk = results[index].predictedRisk;
                     sample.confidence = results[index].confidence;
                     sample.isCorrect = sample.actualRisk === sample.predictedRisk;
@@ -259,23 +259,23 @@ class DNADiseaseDashboard {
                             <div class="probability-bar">
                                 <div class="probability-label">High Risk:</div>
                                 <div class="accuracy-bar">
-                                    <div class="accuracy-fill fill-high-risk" style="width: ${sample.probabilities.High * 100}%"></div>
+                                    <div class="accuracy-fill fill-high-risk" style="width: ${(sample.probabilities.High || 0) * 100}%"></div>
                                 </div>
-                                <div class="probability-value">${(sample.probabilities.High * 100).toFixed(1)}%</div>
+                                <div class="probability-value">${((sample.probabilities.High || 0) * 100).toFixed(1)}%</div>
                             </div>
                             <div class="probability-bar">
                                 <div class="probability-label">Medium Risk:</div>
                                 <div class="accuracy-bar">
-                                    <div class="accuracy-fill fill-pathogenic" style="width: ${sample.probabilities.Medium * 100}%"></div>
+                                    <div class="accuracy-fill fill-pathogenic" style="width: ${(sample.probabilities.Medium || 0) * 100}%"></div>
                                 </div>
-                                <div class="probability-value">${(sample.probabilities.Medium * 100).toFixed(1)}%</div>
+                                <div class="probability-value">${((sample.probabilities.Medium || 0) * 100).toFixed(1)}%</div>
                             </div>
                             <div class="probability-bar">
                                 <div class="probability-label">Low Risk:</div>
                                 <div class="accuracy-bar">
-                                    <div class="accuracy-fill fill-low-risk" style="width: ${sample.probabilities.Low * 100}%"></div>
+                                    <div class="accuracy-fill fill-low-risk" style="width: ${(sample.probabilities.Low || 0) * 100}%"></div>
                                 </div>
-                                <div class="probability-value">${(sample.probabilities.Low * 100).toFixed(1)}%</div>
+                                <div class="probability-value">${((sample.probabilities.Low || 0) * 100).toFixed(1)}%</div>
                             </div>
                         </div>
                         ` : ''}
@@ -297,6 +297,12 @@ class DNADiseaseDashboard {
         
         const preview = document.getElementById('sequencePreview');
         const content = document.getElementById('sequenceContent');
+        
+        // Clear existing feature explanations
+        const existingExplanation = preview.querySelector('.feature-explanation');
+        if (existingExplanation) {
+            existingExplanation.remove();
+        }
         
         // Format sequence for better readability (groups of 10 bases)
         let formattedSequence = '';
@@ -467,9 +473,9 @@ class DNADiseaseDashboard {
         const samplesWithPredictions = dataLoader.samples.filter(s => s.probabilities !== undefined);
         if (samplesWithPredictions.length === 0) return;
         
-        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.High, 0) / samplesWithPredictions.length;
-        const avgMediumRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.Medium, 0) / samplesWithPredictions.length;
-        const avgLowRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.Low, 0) / samplesWithPredictions.length;
+        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + (s.probabilities.High || 0), 0) / samplesWithPredictions.length;
+        const avgMediumRisk = samplesWithPredictions.reduce((sum, s) => sum + (s.probabilities.Medium || 0), 0) / samplesWithPredictions.length;
+        const avgLowRisk = samplesWithPredictions.reduce((sum, s) => sum + (s.probabilities.Low || 0), 0) / samplesWithPredictions.length;
         
         this.probabilityChart.data.datasets[0].data = [avgHighRisk, avgMediumRisk, avgLowRisk];
         this.probabilityChart.update();
@@ -584,7 +590,7 @@ class DNADiseaseDashboard {
         updateStatus('System reset. Upload a CSV file with DNA sequences to begin analysis.');
         
         // Clear TensorFlow.js memory
-        if (tf && tf.memory) {
+        if (typeof tf !== 'undefined' && tf.memory) {
             tf.disposeVariables();
         }
         
