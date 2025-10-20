@@ -84,6 +84,20 @@
             background: #c0392b;
         }
         
+        .btn.success {
+            background: #27ae60;
+        }
+        
+        .btn.success:hover {
+            background: #219653;
+        }
+        
+        .btn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .status {
             color: #ecf0f1;
             font-size: 14px;
@@ -228,6 +242,24 @@
             transition: width 0.5s ease;
         }
         
+        .progress-container {
+            margin: 10px 0;
+            background: #ecf0f1;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        
+        .progress-bar {
+            height: 20px;
+            background: linear-gradient(90deg, #3498db, #2980b9);
+            width: 0%;
+            transition: width 0.3s ease;
+            text-align: center;
+            color: white;
+            font-size: 12px;
+            line-height: 20px;
+        }
+        
         @media (max-width: 768px) {
             .content {
                 grid-template-columns: 1fr;
@@ -248,17 +280,24 @@
         
         <div class="controls">
             <div>
-                <button class="btn" onclick="trainModel()">
+                <button class="btn success" onclick="loadDataset()" id="loadDatasetBtn">
+                    <span>📊</span> Load Dataset
+                </button>
+                <button class="btn" onclick="trainModel()" id="trainModelBtn" disabled>
                     <span>🧠</span> Train Model
                 </button>
-                <button class="btn" onclick="runPrediction()">
+                <button class="btn" onclick="runPrediction()" id="runPredictionBtn" disabled>
                     <span>🔮</span> Run Prediction
                 </button>
                 <button class="btn secondary" onclick="resetSystem()">
                     <span>🔄</span> Reset
                 </button>
             </div>
-            <div class="status" id="status">Ready to initialize system...</div>
+            <div class="status" id="status">Click "Load Dataset" to start...</div>
+        </div>
+
+        <div class="progress-container" id="progressContainer" style="display: none;">
+            <div class="progress-bar" id="progressBar">0%</div>
         </div>
         
         <div class="content">
@@ -269,7 +308,7 @@
                 <div id="rankingContainer" class="accuracy-ranking">
                     <div class="loading">
                         <div class="loading-spinner"></div>
-                        <p>Loading sample data...</p>
+                        <p>Waiting for dataset...</p>
                     </div>
                 </div>
             </div>
