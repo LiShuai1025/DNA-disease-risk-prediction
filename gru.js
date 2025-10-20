@@ -247,7 +247,7 @@ class GRUDiseaseModel {
         }
     }
 
-    // Predict batch of samples
+    // Predict batch of samples - FIXED VERSION
     async predictBatch(samples) {
         const batchResults = [];
         const sequences = [];
@@ -266,8 +266,11 @@ class GRUDiseaseModel {
         const oneHotBatch = this.oneHotEncodeBatch(sequences);
         const tensor = tf.tensor3d(oneHotBatch);
         
+        // 修复：在try块外部声明prediction变量
+        let prediction = null;
+        
         try {
-            const prediction = this.model.predict(tensor);
+            prediction = this.model.predict(tensor);
             const values = await prediction.data();
             
             // Process results
@@ -295,7 +298,7 @@ class GRUDiseaseModel {
             return batchResults;
             
         } finally {
-            // Clean up tensors
+            // Clean up tensors - 现在prediction在finally块中是可访问的
             tensor.dispose();
             if (prediction) {
                 prediction.dispose();
