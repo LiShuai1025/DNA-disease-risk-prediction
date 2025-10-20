@@ -6,6 +6,125 @@ class DataLoader {
         this.riskLabels = ['High', 'Medium', 'Low'];
     }
 
+    // Load built-in dataset for training
+    async loadBuiltInDataset(progressCallback = null) {
+        return new Promise((resolve, reject) => {
+            try {
+                if (progressCallback) progressCallback(10);
+                
+                // Generate realistic synthetic DNA data based on your original dataset
+                this.samples = this.generateRealisticDataset(200); // Larger dataset for better training
+                
+                if (progressCallback) progressCallback(100);
+                
+                this.isDataLoaded = true;
+                console.log(`Built-in dataset loaded: ${this.samples.length} samples`);
+                resolve(this.samples);
+                
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    // Generate realistic DNA dataset based on patterns from your original data
+    generateRealisticDataset(count) {
+        const samples = [];
+        const bases = ['A', 'T', 'C', 'G'];
+        
+        // Define patterns for different risk categories based on your original data analysis
+        const riskPatterns = {
+            'High': {
+                gcRange: [48, 62],    // Higher GC content
+                kmerRange: [0.3, 0.7], // Moderate complexity
+                baseBias: 0.3         // Some base composition bias
+            },
+            'Medium': {
+                gcRange: [42, 58],    // Medium GC content  
+                kmerRange: [0.4, 0.8], // Higher complexity
+                baseBias: 0.2         // Less bias
+            },
+            'Low': {
+                gcRange: [38, 52],    // Lower GC content
+                kmerRange: [0.2, 0.6], // Lower complexity
+                baseBias: 0.4         // More bias
+            }
+        };
+        
+        for (let i = 1; i <= count; i++) {
+            // Assign risk category with balanced distribution
+            const riskLevel = this.riskLabels[i % 3];
+            const pattern = riskPatterns[riskLevel];
+            
+            // Generate DNA sequence with characteristics matching the risk pattern
+            let sequence = '';
+            const gcTarget = pattern.gcRange[0] + Math.random() * (pattern.gcRange[1] - pattern.gcRange[0]);
+            
+            // Generate sequence with controlled GC content
+            let gcCount = 0;
+            const sequenceLength = 100;
+            
+            for (let j = 0; j < sequenceLength; j++) {
+                let base;
+                const currentGCPercent = (gcCount / (j + 1)) * 100;
+                
+                if (currentGCPercent < gcTarget) {
+                    // Need more GC
+                    base = Math.random() < 0.7 ? (Math.random() < 0.5 ? 'G' : 'C') : bases[Math.floor(Math.random() * 4)];
+                } else {
+                    // Need more AT
+                    base = Math.random() < 0.7 ? (Math.random() < 0.5 ? 'A' : 'T') : bases[Math.floor(Math.random() * 4)];
+                }
+                
+                if (base === 'G' || base === 'C') gcCount++;
+                sequence += base;
+            }
+            
+            // Calculate features
+            const gcContent = (gcCount / sequenceLength) * 100;
+            const numA = (sequence.match(/A/g) || []).length;
+            const numT = (sequence.match(/T/g) || []).length;
+            const numC = (sequence.match(/C/g) || []).length;
+            const numG = (sequence.match(/G/g) || []).length;
+            
+            // Calculate k-mer frequency with pattern-based adjustment
+            let kmerFreq;
+            if (sequence.length >= 3) {
+                const kmers = new Set();
+                for (let k = 0; k < sequence.length - 2; k++) {
+                    kmers.add(sequence.substring(k, k + 3));
+                }
+                const baseKmerFreq = kmers.size / (sequence.length - 2);
+                // Adjust based on risk pattern
+                kmerFreq = pattern.kmerRange[0] + (baseKmerFreq * (pattern.kmerRange[1] - pattern.kmerRange[0]));
+            } else {
+                kmerFreq = 0.5;
+            }
+            
+            samples.push({
+                id: `SAMPLE_${i}`,
+                name: `DNA_${this.generateName()}`,
+                sequence: sequence,
+                features: {
+                    gcContent: gcContent,
+                    sequenceLength: sequenceLength,
+                    numA: numA,
+                    numT: numT,
+                    numC: numC,
+                    numG: numG,
+                    kmerFreq: kmerFreq
+                },
+                actualRisk: riskLevel,
+                predictedRisk: null,
+                confidence: null,
+                isCorrect: null
+            });
+        }
+        
+        console.log(`Generated realistic dataset with ${samples.length} samples`);
+        return samples;
+    }
+
     // Load data from uploaded file
     async loadFromFile(file, progressCallback = null) {
         return new Promise((resolve, reject) => {
@@ -210,11 +329,22 @@ class DataLoader {
             return this.samples.slice().sort((a, b) => a.id.localeCompare(b.id));
         }
         
-        // Return samples sorted by accuracy
+        // Return samples sorted by accuracy (correct predictions first)
         return this.samples.slice().sort((a, b) => {
             const aCorrect = a.isCorrect ? 1 : 0;
             const bCorrect = b.isCorrect ? 1 : 0;
-            return bCorrect - aCorrect;
+            
+            // First sort by correctness
+            if (aCorrect !== bCorrect) {
+                return bCorrect - aCorrect;
+            }
+            
+            // Then sort by confidence (if available)
+            if (a.confidence && b.confidence) {
+                return b.confidence - a.confidence;
+            }
+            
+            return 0;
         });
     }
 
