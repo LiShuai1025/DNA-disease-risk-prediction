@@ -49,6 +49,7 @@ class DNADiseaseDashboard {
             updateStatus('Loading and processing DNA dataset...');
             showProgress(0);
             
+            // Only disable the loadDatasetBtn, no longer referencing loadBuiltInBtn
             document.getElementById('loadDatasetBtn').disabled = true;
             
             await dataLoader.loadFromFile(this.uploadedFile, (progress) => {
@@ -85,6 +86,7 @@ class DNADiseaseDashboard {
             updateStatus('Building GRU neural network...');
             showProgress(0);
             
+            // Only disable relevant buttons, no longer referencing loadBuiltInBtn
             document.getElementById('trainModelBtn').disabled = true;
             document.getElementById('loadDatasetBtn').disabled = true;
             
