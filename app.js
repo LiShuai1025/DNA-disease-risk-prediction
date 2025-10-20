@@ -8,19 +8,9 @@ class DNADiseaseDashboard {
 
     async init() {
         try {
-            updateStatus('Loading sample data...');
-            
-            // Load data
-            await dataLoader.loadSampleData();
-            this.isDataLoaded = true;
-            
-            // Initialize chart
+            updateStatus('System initialized. Click "Load Dataset" to begin.');
             this.initTimelineChart();
-            
-            // Update ranking display
             this.updateRankingDisplay();
-            
-            updateStatus('System ready. Click "Train Model" to start.');
             
         } catch (error) {
             console.error('Initialization failed:', error);
@@ -114,8 +104,18 @@ class DNADiseaseDashboard {
     // Update ranking display
     updateRankingDisplay() {
         const rankingContainer = document.getElementById('rankingContainer');
-        const rankedSamples = dataLoader.getRankedSamples();
         
+        if (!dataLoader.isDataLoaded) {
+            rankingContainer.innerHTML = `
+                <div class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>Waiting for dataset...</p>
+                </div>
+            `;
+            return;
+        }
+
+        const rankedSamples = dataLoader.getRankedSamples();
         let html = '';
         
         rankedSamples.forEach((sample, index) => {
@@ -138,36 +138,90 @@ class DNADiseaseDashboard {
         rankingContainer.innerHTML = html;
     }
 
-    // Train model
+    // Load dataset
+    async loadDataset() {
+        try {
+            updateStatus('Loading dataset...');
+            showProgress(0);
+            
+            // Disable buttons during loading
+            document.getElementById('loadDatasetBtn').disabled = true;
+            
+            // Simulate progressive loading
+            for (let i = 0; i <= 100; i += 10) {
+                await new Promise(resolve => setTimeout(resolve, 100));
+                showProgress(i);
+                updateStatus(`Loading dataset... ${i}%`);
+            }
+            
+            // Load actual data
+            await dataLoader.loadSampleData();
+            this.isDataLoaded = true;
+            
+            // Enable train button
+            document.getElementById('trainModelBtn').disabled = false;
+            
+            updateStatus('Dataset loaded successfully! Click "Train Model" to continue.');
+            this.updateRankingDisplay();
+            hideProgress();
+            
+        } catch (error) {
+            console.error('Dataset loading failed:', error);
+            updateStatus('Dataset loading failed: ' + error.message, true);
+            document.getElementById('loadDatasetBtn').disabled = false;
+            hideProgress();
+        }
+    }
+
+    // Train model (optimized for performance)
     async trainModel() {
         if (!this.isDataLoaded) {
-            alert('Please wait for data to load first.');
+            alert('Please load dataset first.');
             return;
         }
 
         try {
             updateStatus('Preparing training data...');
+            showProgress(0);
+            
+            // Disable buttons during training
+            document.getElementById('trainModelBtn').disabled = true;
+            document.getElementById('loadDatasetBtn').disabled = true;
             
             // Prepare training data
             dataLoader.prepareTrainingData();
             const trainingData = dataLoader.trainingData;
             
-            updateStatus('Starting model training...');
+            updateStatus('Starting model training (this may take a moment)...');
             
-            // Train model
+            // Train with progress updates
+            const progressCallback = (progress) => {
+                showProgress(progress);
+                updateStatus(`Training model... ${progress}%`);
+            };
+            
             await diseaseModel.trainModel(
                 trainingData.sequences,
                 trainingData.numericalFeatures,
                 trainingData.labels,
-                30 // epochs
+                20, // Reduced epochs for performance
+                progressCallback
             );
             
             this.isModelReady = true;
+            
+            // Enable prediction button
+            document.getElementById('runPredictionBtn').disabled = false;
+            
             updateStatus('Model training completed successfully!');
+            hideProgress();
             
         } catch (error) {
             console.error('Training failed:', error);
             updateStatus('Training failed: ' + error.message, true);
+            document.getElementById('trainModelBtn').disabled = false;
+            document.getElementById('loadDatasetBtn').disabled = false;
+            hideProgress();
         }
     }
 
@@ -180,14 +234,19 @@ class DNADiseaseDashboard {
 
         try {
             updateStatus('Running predictions on test data...');
+            showProgress(0);
             
             // Split data
             const testData = dataLoader.splitData(0.7);
             
-            // Batch prediction
+            // Batch prediction with progress
             const predictions = await diseaseModel.predictBatch(
                 testData.sequences,
-                testData.numericalFeatures
+                testData.numericalFeatures,
+                (progress) => {
+                    showProgress(progress);
+                    updateStatus(`Running predictions... ${progress}%`);
+                }
             );
             
             // Update sample data
@@ -210,10 +269,12 @@ class DNADiseaseDashboard {
             const accuracy = (correctCount / testSamples.length * 100).toFixed(1);
             
             updateStatus(`Prediction completed! Overall accuracy: ${accuracy}%`);
+            hideProgress();
             
         } catch (error) {
             console.error('Prediction failed:', error);
             updateStatus('Prediction failed: ' + error.message, true);
+            hideProgress();
         }
     }
 
@@ -225,10 +286,33 @@ class DNADiseaseDashboard {
             sample.isCorrect = null;
         });
         
+        dataLoader.isDataLoaded = false;
+        this.isModelReady = false;
+        
+        // Reset buttons
+        document.getElementById('loadDatasetBtn').disabled = false;
+        document.getElementById('trainModelBtn').disabled = true;
+        document.getElementById('runPredictionBtn').disabled = true;
+        
         this.updateRankingDisplay();
         this.updateTimelineChart();
-        updateStatus('System reset. Ready for new training.');
+        updateStatus('System reset. Click "Load Dataset" to start.');
     }
+}
+
+// Progress management
+function showProgress(percent) {
+    const progressContainer = document.getElementById('progressContainer');
+    const progressBar = document.getElementById('progressBar');
+    
+    progressContainer.style.display = 'block';
+    progressBar.style.width = percent + '%';
+    progressBar.textContent = percent + '%';
+}
+
+function hideProgress() {
+    const progressContainer = document.getElementById('progressContainer');
+    progressContainer.style.display = 'none';
 }
 
 // Global functions
@@ -236,6 +320,10 @@ function updateStatus(message, isError = false) {
     const statusElement = document.getElementById('status');
     statusElement.textContent = message;
     statusElement.style.color = isError ? '#e74c3c' : '#ecf0f1';
+}
+
+function loadDataset() {
+    window.dashboard.loadDataset();
 }
 
 function trainModel() {
