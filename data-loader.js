@@ -6,24 +6,140 @@ class DataLoader {
         this.riskLabels = ['High', 'Medium', 'Low'];
     }
 
-    // Load built-in dataset with realistic DNA sequences
-    async loadBuiltInDataset(progressCallback = null) {
-        return new Promise((resolve, reject) => {
-            try {
-                if (progressCallback) progressCallback(10);
-                
-                this.samples = this.generateRealisticDataset(300);
-                
-                if (progressCallback) progressCallback(100);
-                
-                this.isDataLoaded = true;
-                console.log(`Built-in dataset loaded: ${this.samples.length} samples`);
-                resolve(this.samples);
-                
-            } catch (error) {
-                reject(error);
-            }
+    // 数据清洗和平衡
+    cleanAndBalanceDataset(samples) {
+        console.log('Cleaning and balancing dataset...');
+        
+        // 1. 清洗数据：移除无效样本
+        const cleaned = samples.filter(sample => {
+            if (!sample.sequence || sample.sequence.length < 10) return false;
+            if (!sample.actualRisk || !this.riskLabels.includes(sample.actualRisk)) return false;
+            return true;
         });
+        
+        console.log(`After cleaning: ${cleaned.length} samples`);
+        
+        // 2. 平衡数据集
+        const riskCounts = {High: 0, Medium: 0, Low: 0};
+        cleaned.forEach(s => riskCounts[s.actualRisk]++);
+        
+        const minCount = Math.min(...Object.values(riskCounts));
+        const balanced = [];
+        const currentCounts = {High: 0, Medium: 0, Low: 0};
+        
+        // 打乱顺序
+        const shuffled = [...cleaned].sort(() => Math.random() - 0.5);
+        
+        for (const sample of shuffled) {
+            if (currentCounts[sample.actualRisk] < minCount) {
+                balanced.push(sample);
+                currentCounts[sample.actualRisk]++;
+            }
+        }
+        
+        console.log(`Balanced dataset: ${balanced.length} samples`);
+        console.log('Class distribution:', currentCounts);
+        
+        return balanced;
+    }
+
+    // 增强特征提取
+    extractEnhancedFeatures(sequence) {
+        const features = {};
+        const seq = sequence.toUpperCase();
+        
+        // 基础特征
+        const gcCount = (seq.match(/[GC]/g) || []).length;
+        features.gcContent = (gcCount / seq.length) * 100;
+        
+        features.numA = (seq.match(/A/g) || []).length;
+        features.numT = (seq.match(/T/g) || []).length;
+        features.numC = (seq.match(/C/g) || []).length;
+        features.numG = (seq.match(/G/g) || []).length;
+        features.sequenceLength = seq.length;
+        
+        // 3-mer复杂度
+        if (seq.length >= 3) {
+            const kmers = new Set();
+            for (let i = 0; i < seq.length - 2; i++) {
+                kmers.add(seq.substring(i, i + 3));
+            }
+            features.kmerFreq = kmers.size / (seq.length - 2);
+        } else {
+            features.kmerFreq = 0.5;
+        }
+        
+        // 序列熵
+        features.entropy = this.calculateSequenceEntropy(seq);
+        
+        // 重复模式检测
+        features.repeatScore = this.calculateRepeatScore(seq);
+        
+        // 二核苷酸频率特征
+        const dinucleotideFeatures = this.calculateDinucleotideFeatures(seq);
+        Object.assign(features, dinucleotideFeatures);
+        
+        return features;
+    }
+
+    calculateSequenceEntropy(sequence) {
+        const freq = {};
+        for (let base of sequence) {
+            freq[base] = (freq[base] || 0) + 1;
+        }
+        
+        let entropy = 0;
+        const total = sequence.length;
+        for (let base in freq) {
+            const p = freq[base] / total;
+            entropy -= p * Math.log2(p);
+        }
+        
+        return entropy;
+    }
+
+    calculateRepeatScore(sequence) {
+        let score = 0;
+        
+        // 检测2-4个碱基的重复
+        for (let k = 2; k <= 4; k++) {
+            for (let i = 0; i <= sequence.length - k * 3; i++) {
+                const pattern = sequence.substring(i, i + k);
+                let repeats = 1;
+                
+                for (let j = i + k; j <= sequence.length - k; j += k) {
+                    if (sequence.substring(j, j + k) === pattern) {
+                        repeats++;
+                    } else {
+                        break;
+                    }
+                }
+                
+                if (repeats >= 3) {
+                    score += (repeats - 2); // 至少3次重复才计分
+                }
+            }
+        }
+        
+        return Math.min(score, 10); // 限制最大分数
+    }
+
+    calculateDinucleotideFeatures(sequence) {
+        const dinucleotides = ['AA', 'AT', 'AC', 'AG', 'TA', 'TT', 'TC', 'TG', 
+                              'CA', 'CT', 'CC', 'CG', 'GA', 'GT', 'GC', 'GG'];
+        const features = {};
+        const total = Math.max(1, sequence.length - 1);
+        
+        // 计算每个二核苷酸的频率
+        dinucleotides.forEach(dinuc => {
+            const count = (sequence.match(new RegExp(dinuc, 'g')) || []).length;
+            features[`dinuc_${dinuc}`] = count / total;
+        });
+        
+        // 计算GC二核苷酸的总频率（重要特征）
+        features.gcDinucTotal = features.dinuc_GC + features.dinuc_CG + features.dinuc_GG + features.dinuc_CC;
+        
+        return features;
     }
 
     // Load data from uploaded file
@@ -51,6 +167,17 @@ class DataLoader {
                     // Process the parsed data
                     this.processParsedData(parsedData);
                     
+                    // 数据清洗和平衡
+                    this.samples = this.cleanAndBalanceDataset(this.samples);
+                    
+                    // 增强特征提取
+                    this.samples.forEach(sample => {
+                        if (sample.sequence) {
+                            const enhancedFeatures = this.extractEnhancedFeatures(sample.sequence);
+                            sample.features = {...sample.features, ...enhancedFeatures};
+                        }
+                    });
+                    
                     if (progressCallback) progressCallback(100);
                     this.isDataLoaded = true;
                     resolve(this.samples);
@@ -72,13 +199,12 @@ class DataLoader {
         });
     }
 
-    // Parse CSV content
+    // 其余方法保持不变...
     parseCSV(csvContent) {
         const results = Papa.parse(csvContent, {
             header: true,
             skipEmptyLines: true,
             transform: (value) => {
-                // Convert numeric strings to numbers
                 if (!isNaN(value) && value.trim() !== '') {
                     return parseFloat(value);
                 }
@@ -97,12 +223,10 @@ class DataLoader {
         return results.data;
     }
 
-    // Process parsed data into samples
     processParsedData(parsedData) {
         this.samples = [];
         
         parsedData.forEach((row, index) => {
-            // Determine available columns and map them
             const sample = {
                 id: row.Sample_ID || `SAMPLE_${index + 1}`,
                 name: row.Sample_ID || `DNA_${this.generateName()}`,
@@ -127,13 +251,12 @@ class DataLoader {
             if (row.Disease_Risk) {
                 sample.actualRisk = this.normalizeRiskLabel(row.Disease_Risk);
             } else if (row.Class_Label) {
-                // Try to infer risk from class label
                 sample.actualRisk = this.inferRiskFromClass(row.Class_Label);
             }
             
-            // If no risk label is available, generate a random one for demo purposes
+            // If no risk label is available, skip this sample
             if (!sample.actualRisk) {
-                sample.actualRisk = this.riskLabels[Math.floor(Math.random() * this.riskLabels.length)];
+                return;
             }
             
             // Calculate missing features from sequence if available
@@ -147,134 +270,6 @@ class DataLoader {
         console.log(`Processed ${this.samples.length} samples`);
     }
 
-    // Generate realistic DNA dataset with pathogenic markers
-    generateRealisticDataset(count) {
-        const samples = [];
-        const pathogenicPatterns = [
-            'CAGCAG', 'GCCGCC', 'CTGCAG', // Trinucleotide repeats
-            'ATATAT', 'CGCGCG', // Dinucleotide repeats
-            'GGG', 'CCC', 'AAA', 'TTT' // Homopolymer tracts
-        ];
-        
-        for (let i = 1; i <= count; i++) {
-            const isHighRisk = Math.random() < 0.3; // 30% high risk
-            const isPathogenic = Math.random() < 0.25; // 25% pathogenic
-            
-            let sequence = this.generateDNASequence(100, isPathogenic, pathogenicPatterns);
-            
-            // Calculate features
-            const features = this.calculateSequenceFeatures(sequence);
-            
-            // Determine risk based on features and patterns
-            let actualRisk = 'Low';
-            if (isHighRisk) {
-                actualRisk = 'High';
-            } else if (features.hasRepeats || features.gcContent > 55 || features.gcContent < 35) {
-                actualRisk = 'Medium';
-            }
-            
-            samples.push({
-                id: `SAMPLE_${i}`,
-                name: `DNA_${this.generateName()}`,
-                sequence: sequence,
-                features: features,
-                actualRisk: actualRisk,
-                predictedRisk: null,
-                confidence: null,
-                isCorrect: null,
-                isPathogenic: isPathogenic
-            });
-        }
-        
-        return samples;
-    }
-
-    generateDNASequence(length, isPathogenic, pathogenicPatterns) {
-        const bases = ['A', 'T', 'C', 'G'];
-        let sequence = '';
-        
-        if (isPathogenic && Math.random() < 0.7) {
-            // Insert pathogenic patterns
-            const pattern = pathogenicPatterns[Math.floor(Math.random() * pathogenicPatterns.length)];
-            const insertPos = Math.floor(Math.random() * (length - pattern.length));
-            
-            // Generate sequence with pathogenic pattern
-            for (let i = 0; i < length; i++) {
-                if (i >= insertPos && i < insertPos + pattern.length) {
-                    sequence += pattern[i - insertPos];
-                } else {
-                    sequence += bases[Math.floor(Math.random() * 4)];
-                }
-            }
-        } else {
-            // Generate random sequence
-            for (let i = 0; i < length; i++) {
-                sequence += bases[Math.floor(Math.random() * 4)];
-            }
-        }
-        
-        return sequence;
-    }
-
-    calculateSequenceFeatures(sequence) {
-        const gcCount = (sequence.match(/[GC]/g) || []).length;
-        const gcContent = (gcCount / sequence.length) * 100;
-        
-        const numA = (sequence.match(/A/g) || []).length;
-        const numT = (sequence.match(/T/g) || []).length;
-        const numC = (sequence.match(/C/g) || []).length;
-        const numG = (sequence.match(/G/g) || []).length;
-        
-        // Calculate k-mer complexity
-        let kmerFreq = 0.5;
-        if (sequence.length >= 3) {
-            const kmers = new Set();
-            for (let k = 0; k < sequence.length - 2; k++) {
-                kmers.add(sequence.substring(k, k + 3));
-            }
-            kmerFreq = kmers.size / (sequence.length - 2);
-        }
-        
-        // Detect repeats
-        const hasRepeats = this.detectSignificantRepeats(sequence);
-        
-        return {
-            gcContent: gcContent,
-            sequenceLength: sequence.length,
-            numA: numA,
-            numT: numT,
-            numC: numC,
-            numG: numG,
-            kmerFreq: kmerFreq,
-            hasRepeats: hasRepeats
-        };
-    }
-
-    detectSignificantRepeats(sequence) {
-        let totalRepeats = 0;
-        
-        // Check for trinucleotide repeats
-        for (let i = 0; i < sequence.length - 8; i++) {
-            const triplet = sequence.substring(i, i + 3);
-            let repeatCount = 1;
-            
-            for (let j = i + 3; j < sequence.length - 2; j += 3) {
-                if (sequence.substring(j, j + 3) === triplet) {
-                    repeatCount++;
-                } else {
-                    break;
-                }
-            }
-            
-            if (repeatCount >= 3) {
-                totalRepeats++;
-            }
-        }
-        
-        return totalRepeats > 0;
-    }
-
-    // Normalize risk labels
     normalizeRiskLabel(label) {
         const labelStr = String(label).toLowerCase().trim();
         
@@ -285,11 +280,9 @@ class DataLoader {
         return null;
     }
 
-    // Infer risk from class label
     inferRiskFromClass(classLabel) {
         const classStr = String(classLabel).toLowerCase();
         
-        // Simple heuristic - in real application, this would be based on domain knowledge
         if (classStr.includes('pathogen') || classStr.includes('cancer') || classStr.includes('disease')) {
             return 'High';
         } else if (classStr.includes('bacteria') || classStr.includes('virus')) {
@@ -299,17 +292,14 @@ class DataLoader {
         }
     }
 
-    // Calculate features from DNA sequence
     calculateFeaturesFromSequence(sample) {
         const sequence = sample.sequence.toUpperCase();
         
-        // Calculate GC content if not provided
         if (sample.features.gcContent === undefined) {
             const gcCount = (sequence.match(/[GC]/g) || []).length;
             sample.features.gcContent = (gcCount / sequence.length) * 100;
         }
         
-        // Calculate base counts if not provided
         if (sample.features.numA === undefined) {
             sample.features.numA = (sequence.match(/A/g) || []).length;
         }
@@ -323,12 +313,10 @@ class DataLoader {
             sample.features.numG = (sequence.match(/G/g) || []).length;
         }
         
-        // Set sequence length if not provided
         if (sample.features.sequenceLength === undefined) {
             sample.features.sequenceLength = sequence.length;
         }
         
-        // Calculate k-mer frequency if not provided
         if (sample.features.kmerFreq === undefined && sequence.length >= 3) {
             const kmers = new Set();
             for (let i = 0; i < sequence.length - 2; i++) {
@@ -338,7 +326,6 @@ class DataLoader {
         }
     }
 
-    // Generate random DNA sample names
     generateName() {
         const prefixes = ['BRCA', 'TP53', 'EGFR', 'KRAS', 'BRAF', 'PTEN', 'APC', 'VHL'];
         const suffixes = ['001', '002', '003', '004', '005', '006', '007', '008'];
@@ -346,28 +333,23 @@ class DataLoader {
                suffixes[Math.floor(Math.random() * suffixes.length)];
     }
 
-    // Get samples ranked by accuracy
     getRankedSamples() {
         if (!this.samples || this.samples.length === 0) {
             return [];
         }
         
         if (!this.samples.some(s => s.predictedRisk !== null)) {
-            // If no prediction data, return sorted by ID
             return this.samples.slice().sort((a, b) => a.id.localeCompare(b.id));
         }
         
-        // Return samples sorted by accuracy (correct predictions first)
         return this.samples.slice().sort((a, b) => {
             const aCorrect = a.isCorrect ? 1 : 0;
             const bCorrect = b.isCorrect ? 1 : 0;
             
-            // First sort by correctness
             if (aCorrect !== bCorrect) {
                 return bCorrect - aCorrect;
             }
             
-            // Then sort by confidence (if available)
             if (a.confidence && b.confidence) {
                 return b.confidence - a.confidence;
             }
@@ -376,7 +358,6 @@ class DataLoader {
         });
     }
 
-    // Get timeline data for chart
     getTimelineData() {
         if (!this.samples || this.samples.length === 0) {
             return [];
