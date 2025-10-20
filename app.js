@@ -3,6 +3,7 @@ class DNADiseaseDashboard {
         this.isModelReady = false;
         this.isDataLoaded = false;
         this.timelineChart = null;
+        this.probabilityChart = null;
         this.uploadedFile = null;
         this.dataSource = null;
         this.init();
@@ -10,8 +11,9 @@ class DNADiseaseDashboard {
 
     async init() {
         try {
-            updateStatus('System ready. Use built-in data or upload your dataset.');
+            updateStatus('Upload a CSV file with DNA sequences to begin analysis');
             this.initTimelineChart();
+            this.initProbabilityChart();
             this.setupFileUpload();
             this.updateRankingDisplay();
             this.updatePerformanceMetrics();
@@ -37,41 +39,9 @@ class DNADiseaseDashboard {
         });
     }
 
-    async loadBuiltInDataset() {
-        try {
-            updateStatus('Loading built-in DNA dataset...');
-            showProgress(0);
-            
-            document.getElementById('loadBuiltInBtn').disabled = true;
-            document.getElementById('loadDatasetBtn').disabled = true;
-            
-            await dataLoader.loadBuiltInDataset((progress) => {
-                showProgress(progress);
-                updateStatus(`Loading built-in dataset... ${progress}%`);
-            });
-            
-            this.isDataLoaded = true;
-            this.dataSource = 'builtin';
-            
-            document.getElementById('trainModelBtn').disabled = false;
-            document.getElementById('fileInfo').textContent = `Built-in dataset: ${dataLoader.samples.length} DNA sequences`;
-            document.getElementById('fileInfo').style.display = 'block';
-            
-            this.updateRankingDisplay();
-            updateStatus(`Built-in dataset loaded successfully! ${dataLoader.samples.length} DNA sequences ready for training.`);
-            hideProgress();
-            
-        } catch (error) {
-            console.error('Failed to load built-in dataset:', error);
-            updateStatus('Failed to load built-in dataset: ' + error.message, true);
-            document.getElementById('loadBuiltInBtn').disabled = false;
-            hideProgress();
-        }
-    }
-
     async loadDataset() {
         if (!this.uploadedFile) {
-            alert('Please select a file first.');
+            alert('Please select a CSV file first.');
             return;
         }
 
@@ -80,7 +50,6 @@ class DNADiseaseDashboard {
             showProgress(0);
             
             document.getElementById('loadDatasetBtn').disabled = true;
-            document.getElementById('loadBuiltInBtn').disabled = true;
             
             await dataLoader.loadFromFile(this.uploadedFile, (progress) => {
                 showProgress(progress);
@@ -102,7 +71,6 @@ class DNADiseaseDashboard {
             console.error('Failed to load dataset:', error);
             updateStatus('Failed to load dataset: ' + error.message, true);
             document.getElementById('loadDatasetBtn').disabled = false;
-            document.getElementById('loadBuiltInBtn').disabled = false;
             hideProgress();
         }
     }
@@ -119,7 +87,6 @@ class DNADiseaseDashboard {
             
             document.getElementById('trainModelBtn').disabled = true;
             document.getElementById('loadDatasetBtn').disabled = true;
-            document.getElementById('loadBuiltInBtn').disabled = true;
             
             updateStatus('Training multi-output GRU model...');
             
@@ -146,7 +113,6 @@ class DNADiseaseDashboard {
             updateStatus('Training failed: ' + error.message, true);
             document.getElementById('trainModelBtn').disabled = false;
             document.getElementById('loadDatasetBtn').disabled = false;
-            document.getElementById('loadBuiltInBtn').disabled = false;
             hideProgress();
         }
     }
@@ -183,6 +149,7 @@ class DNADiseaseDashboard {
             // Update UI
             this.updateRankingDisplay();
             this.updateTimelineChart();
+            this.updateProbabilityChart();
             this.updatePerformanceMetrics();
             
             // Calculate performance metrics
@@ -207,7 +174,7 @@ class DNADiseaseDashboard {
             container.innerHTML = `
                 <div class="loading">
                     <div class="loading-spinner"></div>
-                    <p>Use built-in data or upload a dataset to see rankings</p>
+                    <p>Upload a CSV file with DNA sequences to see predictions</p>
                 </div>
             `;
             return;
@@ -233,22 +200,58 @@ class DNADiseaseDashboard {
             const correctIcon = sample.isCorrect ? '✅' : '❌';
             
             html += `
-                <div class="${riskClass}">
-                    <div>
+                <div class="${riskClass}" onclick="dashboard.showSequencePreview('${sample.id}')">
+                    <div class="sample-info">
                         <div class="sample-name">${sample.name}</div>
-                        <div style="font-size: 0.8em; color: #666;">
+                        <div class="sample-details">
                             Actual: ${sample.actualRisk} | Predicted: ${sample.predictedRisk || '--'} ${correctIcon}
                         </div>
-                        <div class="accuracy-bar">
-                            <div class="accuracy-fill" style="width: ${sample.confidence ? sample.confidence * 100 : 0}%"></div>
+                        ${sample.highRiskProbability !== undefined ? `
+                        <div class="probability-bars">
+                            <div class="probability-bar">
+                                <div class="probability-label">High Risk:</div>
+                                <div class="accuracy-bar">
+                                    <div class="accuracy-fill fill-high-risk" style="width: ${sample.highRiskProbability * 100}%"></div>
+                                </div>
+                                <div class="probability-value">${(sample.highRiskProbability * 100).toFixed(1)}%</div>
+                            </div>
+                            <div class="probability-bar">
+                                <div class="probability-label">Pathogenic:</div>
+                                <div class="accuracy-bar">
+                                    <div class="accuracy-fill fill-pathogenic" style="width: ${sample.pathogenicProbability * 100}%"></div>
+                                </div>
+                                <div class="probability-value">${(sample.pathogenicProbability * 100).toFixed(1)}%</div>
+                            </div>
                         </div>
+                        ` : ''}
                     </div>
-                    <div class="accuracy">${confidence}</div>
+                    <div class="sample-stats">
+                        <div class="confidence">${confidence}</div>
+                        ${sample.predictedRisk ? `<div class="risk-badge badge-${sample.predictedRisk.toLowerCase()}">${sample.predictedRisk}</div>` : ''}
+                    </div>
                 </div>
             `;
         });
         
         container.innerHTML = html;
+    }
+
+    showSequencePreview(sampleId) {
+        const sample = dataLoader.samples.find(s => s.id === sampleId);
+        if (!sample || !sample.sequence) return;
+        
+        const preview = document.getElementById('sequencePreview');
+        const content = document.getElementById('sequenceContent');
+        
+        // Format sequence for better readability (groups of 10 bases)
+        let formattedSequence = '';
+        for (let i = 0; i < sample.sequence.length; i += 10) {
+            formattedSequence += sample.sequence.substring(i, i + 10) + ' ';
+            if ((i / 10 + 1) % 5 === 0) formattedSequence += '\n';
+        }
+        
+        content.textContent = formattedSequence;
+        preview.style.display = 'block';
     }
 
     initTimelineChart() {
@@ -262,14 +265,16 @@ class DNADiseaseDashboard {
                         borderColor: '#27ae60',
                         backgroundColor: 'rgba(39, 174, 96, 0.1)',
                         tension: 0.4,
-                        fill: true
+                        fill: true,
+                        data: []
                     },
                     {
                         label: 'Incorrect Predictions', 
                         borderColor: '#e74c3c',
                         backgroundColor: 'rgba(231, 76, 60, 0.1)',
                         tension: 0.4,
-                        fill: true
+                        fill: true,
+                        data: []
                     }
                 ]
             },
@@ -296,6 +301,45 @@ class DNADiseaseDashboard {
         });
     }
 
+    initProbabilityChart() {
+        const ctx = document.getElementById('probabilityChart').getContext('2d');
+        this.probabilityChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['High Risk', 'Pathogenic'],
+                datasets: [
+                    {
+                        label: 'Probability Distribution',
+                        data: [0, 0],
+                        backgroundColor: [
+                            'rgba(231, 76, 60, 0.7)',
+                            'rgba(243, 156, 18, 0.7)'
+                        ],
+                        borderColor: [
+                            'rgba(231, 76, 60, 1)',
+                            'rgba(243, 156, 18, 1)'
+                        ],
+                        borderWidth: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 1,
+                        title: {
+                            display: true,
+                            text: 'Probability'
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     updateTimelineChart() {
         if (!this.timelineChart) return;
         
@@ -316,6 +360,19 @@ class DNADiseaseDashboard {
         this.timelineChart.data.datasets[0].data = correctData;
         this.timelineChart.data.datasets[1].data = incorrectData;
         this.timelineChart.update();
+    }
+
+    updateProbabilityChart() {
+        if (!this.probabilityChart || !dataLoader.samples) return;
+        
+        const samplesWithPredictions = dataLoader.samples.filter(s => s.highRiskProbability !== undefined);
+        if (samplesWithPredictions.length === 0) return;
+        
+        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + s.highRiskProbability, 0) / samplesWithPredictions.length;
+        const avgPathogenic = samplesWithPredictions.reduce((sum, s) => sum + s.pathogenicProbability, 0) / samplesWithPredictions.length;
+        
+        this.probabilityChart.data.datasets[0].data = [avgHighRisk, avgPathogenic];
+        this.probabilityChart.update();
     }
 
     updatePerformanceMetrics() {
@@ -349,18 +406,21 @@ class DNADiseaseDashboard {
         dataLoader.isDataLoaded = false;
         
         document.getElementById('fileUpload').value = '';
-        document.getElementById('fileUploadLabel').innerHTML = '<span>📁</span> Upload Dataset';
+        document.getElementById('fileUploadLabel').innerHTML = '<span>📁</span> Upload CSV Dataset';
         document.getElementById('fileInfo').style.display = 'none';
         document.getElementById('loadDatasetBtn').disabled = true;
         document.getElementById('trainModelBtn').disabled = true;
         document.getElementById('runPredictionBtn').disabled = true;
-        document.getElementById('loadBuiltInBtn').disabled = false;
         
         this.updateRankingDisplay();
         this.updatePerformanceMetrics();
         this.updateTimelineChart();
+        this.updateProbabilityChart();
         
-        updateStatus('System reset. Click "Use Built-in Data" or upload your dataset to begin.');
+        // Hide sequence preview
+        document.getElementById('sequencePreview').style.display = 'none';
+        
+        updateStatus('System reset. Upload a CSV file with DNA sequences to begin analysis.');
         
         // Clear TensorFlow.js memory
         if (tf && tf.memory) {
@@ -388,10 +448,6 @@ function showProgress(percent) {
 function hideProgress() {
     const progressContainer = document.getElementById('progressContainer');
     progressContainer.style.display = 'none';
-}
-
-function loadBuiltInDataset() {
-    window.dashboard.loadBuiltInDataset();
 }
 
 function loadDataset() {
