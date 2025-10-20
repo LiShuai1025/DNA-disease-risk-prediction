@@ -3,7 +3,8 @@ class DataLoader {
         this.samples = [];
         this.isDataLoaded = false;
         this.charToInt = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
-        this.riskLabels = ['High', 'Medium', 'Low'];
+        // 使用常量定义风险标签
+        this.RISK_LABELS = Object.freeze(['High', 'Medium', 'Low']);
     }
 
     // 数据清洗和平衡
@@ -13,7 +14,7 @@ class DataLoader {
         // 1. 清洗数据：移除无效样本
         const cleaned = samples.filter(sample => {
             if (!sample.sequence || sample.sequence.length < 10) return false;
-            if (!sample.actualRisk || !this.riskLabels.includes(sample.actualRisk)) return false;
+            if (!sample.actualRisk || !this.RISK_LABELS.includes(sample.actualRisk)) return false;
             return true;
         });
         
@@ -137,7 +138,7 @@ class DataLoader {
         });
         
         // 计算GC二核苷酸的总频率（重要特征）
-        features.gcDinucTotal = features.dinuc_GC + features.dinuc_CG + features.dinuc_GG + features.dinuc_CC;
+        features.gcDinucTotal = (features.dinuc_GC || 0) + (features.dinuc_CG || 0) + (features.dinuc_GG || 0) + (features.dinuc_CC || 0);
         
         return features;
     }
@@ -199,7 +200,6 @@ class DataLoader {
         });
     }
 
-    // 其余方法保持不变...
     parseCSV(csvContent) {
         const results = Papa.parse(csvContent, {
             header: true,
