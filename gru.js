@@ -5,6 +5,7 @@ class GRUDiseaseModel {
         this.maxSequenceLength = 100;
         this.vocabSize = 4; // A, T, C, G
         this.numOutputs = 2; // Binary classification outputs
+        this.trainingInProgress = false;
     }
 
     // Convert DNA sequence to numerical encoding
@@ -12,7 +13,10 @@ class GRUDiseaseModel {
         const encoding = {'A': 0, 'T': 1, 'C': 2, 'G': 3};
         const encoded = [];
         
-        for (let i = 0; i < Math.min(sequence.length, this.maxSequenceLength); i++) {
+        // Use only first maxSequenceLength characters for performance
+        const effectiveLength = Math.min(sequence.length, this.maxSequenceLength);
+        
+        for (let i = 0; i < effectiveLength; i++) {
             const char = sequence[i].toUpperCase();
             encoded.push(encoding[char] || 0);
         }
@@ -25,27 +29,37 @@ class GRUDiseaseModel {
         return encoded;
     }
 
-    // Convert to one-hot encoding for GRU input
-    oneHotEncode(encodedSequence) {
-        const oneHot = [];
-        for (let i = 0; i < encodedSequence.length; i++) {
-            const vector = new Array(this.vocabSize).fill(0);
-            vector[encodedSequence[i]] = 1;
-            oneHot.push(vector);
+    // Convert to one-hot encoding for GRU input - optimized version
+    oneHotEncodeBatch(encodedSequences) {
+        const batchSize = encodedSequences.length;
+        const oneHotBatch = [];
+        
+        for (let i = 0; i < batchSize; i++) {
+            const oneHot = [];
+            for (let j = 0; j < this.maxSequenceLength; j++) {
+                const vector = new Array(this.vocabSize).fill(0);
+                vector[encodedSequences[i][j]] = 1;
+                oneHot.push(vector);
+            }
+            oneHotBatch.push(oneHot);
         }
-        return oneHot;
+        
+        return oneHotBatch;
     }
 
-    // Prepare training data
+    // Prepare training data with batching for memory efficiency
     prepareTrainingData(samples) {
         const sequences = [];
         const labels = [];
         
-        samples.forEach(sample => {
+        // Limit dataset size for browser performance
+        const maxSamples = Math.min(samples.length, 200);
+        
+        for (let i = 0; i < maxSamples; i++) {
+            const sample = samples[i];
             if (sample.sequence && sample.actualRisk) {
                 const encoded = this.encodeSequence(sample.sequence);
-                const oneHot = this.oneHotEncode(encoded);
-                sequences.push(oneHot);
+                sequences.push(encoded);
                 
                 // Binary classification: High risk vs Low/Medium
                 const isHighRisk = sample.actualRisk === 'High' ? 1 : 0;
@@ -53,10 +67,12 @@ class GRUDiseaseModel {
                 
                 labels.push([isHighRisk, isPathogenic]);
             }
-        });
+        }
+        
+        console.log(`Prepared ${sequences.length} samples for training`);
         
         return {
-            sequences: tf.tensor3d(sequences),
+            sequences: tf.tensor3d(this.oneHotEncodeBatch(sequences)),
             labels: tf.tensor2d(labels)
         };
     }
@@ -66,13 +82,12 @@ class GRUDiseaseModel {
         const features = sample.features;
         if (!features) return false;
         
-        // Rules based on known pathogenic markers
+        // Simple rules based on known pathogenic markers
         const hasHighGC = features.gcContent > 60;
         const hasLowComplexity = features.kmerFreq < 0.3;
         const hasBaseBias = this.calculateBaseBias(sample) > 0.35;
-        const hasRepeats = this.detectRepeats(sample.sequence) > 0.1;
         
-        return hasHighGC || hasLowComplexity || hasBaseBias || hasRepeats;
+        return hasHighGC || hasLowComplexity || hasBaseBias;
     }
 
     calculateBaseBias(sample) {
@@ -82,50 +97,30 @@ class GRUDiseaseModel {
         return maxBase / total;
     }
 
-    detectRepeats(sequence) {
-        if (!sequence || sequence.length < 6) return 0;
-        
-        let repeatCount = 0;
-        for (let i = 0; i < sequence.length - 5; i++) {
-            const kmer = sequence.substring(i, i + 3);
-            let repeats = 0;
-            for (let j = i + 3; j < sequence.length - 2; j += 3) {
-                if (sequence.substring(j, j + 3) === kmer) {
-                    repeats++;
-                } else {
-                    break;
-                }
-            }
-            if (repeats >= 2) repeatCount++;
-        }
-        
-        return repeatCount / (sequence.length / 3);
-    }
-
-    // Build the GRU model
+    // Build optimized GRU model
     buildModel() {
         const model = tf.sequential();
         
-        // GRU Layer
+        // Smaller GRU Layer for browser performance
         model.add(tf.layers.gru({
-            units: 64,
+            units: 32, // Reduced from 64
             returnSequences: false,
             inputShape: [this.maxSequenceLength, this.vocabSize],
-            dropout: 0.2,
-            recurrentDropout: 0.2
+            dropout: 0.1, // Reduced regularization
+            recurrentDropout: 0.1
         }));
         
-        // Dense layers
+        // Smaller dense layers
         model.add(tf.layers.dense({
-            units: 32,
+            units: 16, // Reduced from 32
             activation: 'relu',
-            kernelRegularizer: tf.regularizers.l2({l2: 0.01})
+            kernelRegularizer: tf.regularizers.l2({l2: 0.001}) // Reduced regularization
         }));
         
-        model.add(tf.layers.dropout({rate: 0.3}));
+        model.add(tf.layers.dropout({rate: 0.2})); // Reduced dropout
         
         model.add(tf.layers.dense({
-            units: 16,
+            units: 8, // Reduced from 16
             activation: 'relu'
         }));
         
@@ -135,47 +130,60 @@ class GRUDiseaseModel {
             activation: 'sigmoid'
         }));
         
-        // Compile model
+        // Compile model with simpler optimizer
         model.compile({
             optimizer: tf.train.adam(0.001),
             loss: 'binaryCrossentropy',
-            metrics: ['accuracy', 'precision', 'recall']
+            metrics: ['accuracy']
         });
         
         this.model = model;
-        console.log('GRU Model built successfully');
+        console.log('Optimized GRU Model built successfully');
         return model;
     }
 
-    // Train the GRU model
+    // Train the GRU model with performance optimizations
     async trainModel(samples, progressCallback = null) {
+        if (this.trainingInProgress) {
+            throw new Error('Training already in progress');
+        }
+        
+        this.trainingInProgress = true;
+        
         try {
-            if (progressCallback) progressCallback(10, 'Building GRU model...');
+            if (progressCallback) progressCallback(10, 'Building optimized GRU model...');
             
-            // Build model if not already built
-            if (!this.model) {
-                this.buildModel();
+            // Clear any existing model to free memory
+            if (this.model) {
+                this.model.dispose();
             }
+            
+            // Build optimized model
+            this.buildModel();
             
             if (progressCallback) progressCallback(20, 'Preparing training data...');
             
-            // Prepare training data
+            // Prepare training data with size limits
             const {sequences, labels} = this.prepareTrainingData(samples);
             
-            if (progressCallback) progressCallback(40, 'Training GRU model...');
+            if (progressCallback) progressCallback(40, 'Starting training (this may take a while)...');
             
-            // Train the model
+            // Train with fewer epochs and smaller batch size
             const history = await this.model.fit(sequences, labels, {
-                epochs: 50,
-                batchSize: 32,
+                epochs: 30, // Reduced from 50
+                batchSize: 16, // Smaller batch size
                 validationSplit: 0.2,
+                verbose: 0, // Reduce console output
                 callbacks: {
                     onEpochEnd: async (epoch, logs) => {
-                        const progress = 40 + (epoch / 50) * 50;
+                        // Give browser time to process UI events
+                        await new Promise(resolve => setTimeout(resolve, 10));
+                        
+                        const progress = 40 + (epoch / 30) * 50;
                         if (progressCallback) {
                             progressCallback(
                                 Math.min(90, progress), 
-                                `Epoch ${epoch + 1}/50 - Loss: ${logs.loss.toFixed(4)}`
+                                `Epoch ${epoch + 1}/30 - Loss: ${logs.loss.toFixed(4)}`
                             );
                         }
                     }
@@ -187,17 +195,24 @@ class GRUDiseaseModel {
             this.isTrained = true;
             console.log('GRU Model training completed');
             
-            // Clean up tensors
+            // Clean up tensors immediately
             sequences.dispose();
             labels.dispose();
             
         } catch (error) {
             console.error('Error training GRU model:', error);
+            // Ensure model is disposed on error
+            if (this.model) {
+                this.model.dispose();
+                this.model = null;
+            }
             throw error;
+        } finally {
+            this.trainingInProgress = false;
         }
     }
 
-    // Predict samples using GRU model
+    // Predict samples using GRU model with batching
     async predictSamples(samples, progressCallback = null) {
         if (!this.isTrained) {
             throw new Error('Model not trained');
@@ -207,15 +222,21 @@ class GRUDiseaseModel {
             const results = [];
             const totalSamples = samples.length;
             
-            for (let i = 0; i < totalSamples; i++) {
-                const sample = samples[i];
-                const result = await this.predictSingleSample(sample);
-                results.push(result);
+            // Process in smaller batches to avoid memory issues
+            const batchSize = 10;
+            
+            for (let i = 0; i < totalSamples; i += batchSize) {
+                const batchSamples = samples.slice(i, i + batchSize);
+                const batchResults = await this.predictBatch(batchSamples);
+                results.push(...batchResults);
                 
                 if (progressCallback) {
-                    const progress = ((i + 1) / totalSamples) * 100;
-                    progressCallback(Math.round(progress));
+                    const progress = ((i + batchSize) / totalSamples) * 100;
+                    progressCallback(Math.min(100, Math.round(progress)));
                 }
+                
+                // Give browser time to process UI events
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
             
             return results;
@@ -226,62 +247,70 @@ class GRUDiseaseModel {
         }
     }
 
-    // Predict single sample
-    async predictSingleSample(sample) {
-        if (!sample.sequence) {
-            return {
-                predictedRisk: 'Low',
-                confidence: 0.5,
-                probabilities: [0.5, 0.5]
-            };
+    // Predict batch of samples
+    async predictBatch(samples) {
+        const batchResults = [];
+        const sequences = [];
+        
+        // Encode all sequences in batch
+        for (const sample of samples) {
+            if (sample.sequence) {
+                const encoded = this.encodeSequence(sample.sequence);
+                sequences.push(encoded);
+            } else {
+                sequences.push(new Array(this.maxSequenceLength).fill(0));
+            }
         }
         
-        const encoded = this.encodeSequence(sample.sequence);
-        const oneHot = this.oneHotEncode(encoded);
-        const tensor = tf.tensor3d([oneHot]);
+        // Convert to one-hot in batch
+        const oneHotBatch = this.oneHotEncodeBatch(sequences);
+        const tensor = tf.tensor3d(oneHotBatch);
         
-        const prediction = this.model.predict(tensor);
-        const values = await prediction.data();
-        
-        // Clean up tensors
-        tensor.dispose();
-        prediction.dispose();
-        
-        const [highRiskProb, pathogenicProb] = values;
-        const confidence = Math.max(highRiskProb, pathogenicProb);
-        
-        // Determine final risk classification
-        let predictedRisk = 'Low';
-        if (highRiskProb > 0.7) {
-            predictedRisk = 'High';
-        } else if (highRiskProb > 0.4 || pathogenicProb > 0.6) {
-            predictedRisk = 'Medium';
+        try {
+            const prediction = this.model.predict(tensor);
+            const values = await prediction.data();
+            
+            // Process results
+            for (let i = 0; i < samples.length; i++) {
+                const highRiskProb = values[i * 2];
+                const pathogenicProb = values[i * 2 + 1];
+                const confidence = Math.max(highRiskProb, pathogenicProb);
+                
+                // Determine final risk classification
+                let predictedRisk = 'Low';
+                if (highRiskProb > 0.7) {
+                    predictedRisk = 'High';
+                } else if (highRiskProb > 0.4 || pathogenicProb > 0.6) {
+                    predictedRisk = 'Medium';
+                }
+                
+                batchResults.push({
+                    predictedRisk: predictedRisk,
+                    confidence: confidence,
+                    highRiskProbability: highRiskProb,
+                    pathogenicProbability: pathogenicProb
+                });
+            }
+            
+            return batchResults;
+            
+        } finally {
+            // Clean up tensors
+            tensor.dispose();
+            if (prediction) {
+                prediction.dispose();
+            }
         }
-        
-        return {
-            predictedRisk: predictedRisk,
-            confidence: confidence,
-            probabilities: [highRiskProb, pathogenicProb],
-            highRiskProbability: highRiskProb,
-            pathogenicProbability: pathogenicProb
-        };
     }
 
     // Get model information
     getModelInfo() {
         return {
-            version: '2.0-GRU',
+            version: '2.0-GRU-Optimized',
             type: 'Multi-Output GRU Neural Network',
-            architecture: 'GRU(64) -> Dense(32) -> Dense(16) -> Output(2)',
+            architecture: 'GRU(32) -> Dense(16) -> Dense(8) -> Output(2)',
             outputs: ['High_Risk_Probability', 'Pathogenic_Probability']
         };
-    }
-
-    // Model summary
-    async summary() {
-        if (this.model) {
-            this.model.summary();
-        }
     }
 }
 
