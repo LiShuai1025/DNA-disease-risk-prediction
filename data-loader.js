@@ -12,7 +12,7 @@ class DataLoader {
     async loadSampleData() {
         // In a real application, this would load actual data from a server
         // For now, using generated data
-        this.samples = this.generateSampleData(50);
+        this.samples = this.generateSampleData(30); // Reduced sample count for performance
         this.isDataLoaded = true;
         return this.samples;
     }
@@ -122,7 +122,7 @@ class DataLoader {
     }
 
     // Split data into training and testing sets
-    splitData(trainRatio = 0.8) {
+    splitData(trainRatio = 0.7) {
         if (!this.trainingData) this.prepareTrainingData();
         
         const totalSamples = this.samples.length;
