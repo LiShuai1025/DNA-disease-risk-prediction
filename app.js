@@ -7,6 +7,7 @@ class DNADiseaseDashboard {
         this.uploadedFile = null;
         this.dataSource = null;
         this.trainingInProgress = false;
+        this.predictionInProgress = false;
         this.init();
     }
 
@@ -89,7 +90,7 @@ class DNADiseaseDashboard {
 
         try {
             this.trainingInProgress = true;
-            updateStatus('Building optimized GRU neural network...');
+            updateStatus('Building optimized GRU model...');
             showProgress(0);
             
             // Disable all buttons during training
@@ -100,18 +101,18 @@ class DNADiseaseDashboard {
             // Show training info
             document.getElementById('dataSourceInfo').innerHTML = `
                 <strong>Training Information:</strong> 
-                Using optimized GRU model with ${Math.min(dataLoader.samples.length, 200)} samples. 
-                This may take 1-3 minutes depending on your device.
+                Using efficient GRU model with ${Math.min(dataLoader.samples.length, 150)} balanced samples. 
+                Early stopping enabled for optimal performance.
             `;
             document.getElementById('dataSourceInfo').style.display = 'block';
             
-            updateStatus('Training optimized GRU model (this may take a while)...');
+            updateStatus('Training efficient GRU model...');
             
             await diseaseModel.trainModel(
                 dataLoader.samples,
                 (progress, message) => {
                     showProgress(progress);
-                    updateStatus(`Training GRU model... ${progress}% - ${message}`);
+                    updateStatus(`Training model... ${progress}% - ${message}`);
                 }
             );
             
@@ -125,7 +126,7 @@ class DNADiseaseDashboard {
             const modelInfo = diseaseModel.getModelInfo();
             document.getElementById('modelType').textContent = `${modelInfo.type} - ${modelInfo.architecture}`;
             
-            updateStatus('GRU model training completed! Click "Run Prediction" to analyze DNA sequences.');
+            updateStatus('Model training completed! Ready for predictions.');
             this.updatePerformanceMetrics();
             hideProgress();
             
@@ -133,7 +134,6 @@ class DNADiseaseDashboard {
             console.error('Training failed:', error);
             updateStatus('Training failed: ' + error.message, true);
             
-            // Re-enable buttons on error
             document.getElementById('trainModelBtn').disabled = false;
             document.getElementById('loadDatasetBtn').disabled = false;
             this.trainingInProgress = false;
@@ -143,21 +143,36 @@ class DNADiseaseDashboard {
 
     async runPrediction() {
         if (!this.isModelReady) {
-            alert('Please train the GRU model first.');
+            alert('Please train the model first.');
+            return;
+        }
+
+        if (this.predictionInProgress) {
+            alert('Prediction is already in progress. Please wait.');
             return;
         }
 
         try {
-            updateStatus('Running GRU model predictions...');
+            this.predictionInProgress = true;
+            updateStatus('Running optimized predictions...');
             showProgress(0);
+            
+            // Disable buttons during prediction
+            document.getElementById('runPredictionBtn').disabled = true;
+            document.getElementById('trainModelBtn').disabled = true;
+            
+            const startTime = Date.now();
             
             const results = await diseaseModel.predictSamples(
                 dataLoader.samples,
                 (progress) => {
                     showProgress(progress);
-                    updateStatus(`Running GRU predictions... ${progress}%`);
+                    updateStatus(`Running predictions... ${progress}%`);
                 }
             );
+            
+            const endTime = Date.now();
+            const predictionTime = ((endTime - startTime) / 1000).toFixed(2);
             
             // Update samples with predictions
             dataLoader.samples.forEach((sample, index) => {
@@ -165,8 +180,7 @@ class DNADiseaseDashboard {
                     sample.predictedRisk = results[index].predictedRisk;
                     sample.confidence = results[index].confidence;
                     sample.isCorrect = sample.actualRisk === sample.predictedRisk;
-                    sample.highRiskProbability = results[index].highRiskProbability;
-                    sample.pathogenicProbability = results[index].pathogenicProbability;
+                    sample.probabilities = results[index].probabilities;
                 }
             });
             
@@ -181,12 +195,22 @@ class DNADiseaseDashboard {
             const totalPredicted = dataLoader.samples.filter(s => s.predictedRisk !== null).length;
             const accuracy = totalPredicted > 0 ? (correctCount / totalPredicted * 100).toFixed(1) : 0;
             
-            updateStatus(`GRU prediction completed! Accuracy: ${accuracy}% (${correctCount}/${totalPredicted} correct)`);
+            updateStatus(`Prediction completed in ${predictionTime}s! Accuracy: ${accuracy}% (${correctCount}/${totalPredicted} correct)`);
+            
+            // Re-enable buttons
+            document.getElementById('runPredictionBtn').disabled = false;
+            document.getElementById('trainModelBtn').disabled = false;
+            this.predictionInProgress = false;
             hideProgress();
             
         } catch (error) {
             console.error('Prediction failed:', error);
             updateStatus('Prediction failed: ' + error.message, true);
+            
+            // Re-enable buttons on error
+            document.getElementById('runPredictionBtn').disabled = false;
+            document.getElementById('trainModelBtn').disabled = false;
+            this.predictionInProgress = false;
             hideProgress();
         }
     }
@@ -230,21 +254,28 @@ class DNADiseaseDashboard {
                         <div class="sample-details">
                             Actual: ${sample.actualRisk} | Predicted: ${sample.predictedRisk || '--'} ${correctIcon}
                         </div>
-                        ${sample.highRiskProbability !== undefined ? `
+                        ${sample.probabilities ? `
                         <div class="probability-bars">
                             <div class="probability-bar">
                                 <div class="probability-label">High Risk:</div>
                                 <div class="accuracy-bar">
-                                    <div class="accuracy-fill fill-high-risk" style="width: ${sample.highRiskProbability * 100}%"></div>
+                                    <div class="accuracy-fill fill-high-risk" style="width: ${sample.probabilities.High * 100}%"></div>
                                 </div>
-                                <div class="probability-value">${(sample.highRiskProbability * 100).toFixed(1)}%</div>
+                                <div class="probability-value">${(sample.probabilities.High * 100).toFixed(1)}%</div>
                             </div>
                             <div class="probability-bar">
-                                <div class="probability-label">Pathogenic:</div>
+                                <div class="probability-label">Medium Risk:</div>
                                 <div class="accuracy-bar">
-                                    <div class="accuracy-fill fill-pathogenic" style="width: ${sample.pathogenicProbability * 100}%"></div>
+                                    <div class="accuracy-fill fill-pathogenic" style="width: ${sample.probabilities.Medium * 100}%"></div>
                                 </div>
-                                <div class="probability-value">${(sample.pathogenicProbability * 100).toFixed(1)}%</div>
+                                <div class="probability-value">${(sample.probabilities.Medium * 100).toFixed(1)}%</div>
+                            </div>
+                            <div class="probability-bar">
+                                <div class="probability-label">Low Risk:</div>
+                                <div class="accuracy-bar">
+                                    <div class="accuracy-fill fill-low-risk" style="width: ${sample.probabilities.Low * 100}%"></div>
+                                </div>
+                                <div class="probability-value">${(sample.probabilities.Low * 100).toFixed(1)}%</div>
                             </div>
                         </div>
                         ` : ''}
@@ -276,9 +307,50 @@ class DNADiseaseDashboard {
         
         content.textContent = formattedSequence;
         preview.style.display = 'block';
+        
+        // Show feature explanation if available
+        this.showFeatureExplanation(sample);
     }
 
-    // 添加缺失的 initTimelineChart 方法
+    showFeatureExplanation(sample) {
+        const features = sample.features || {};
+        let explanation = '';
+        
+        if (features.gcContent !== undefined) {
+            let gcLevel = 'Normal';
+            if (features.gcContent > 60) gcLevel = 'High';
+            else if (features.gcContent < 40) gcLevel = 'Low';
+            
+            explanation += `<li>GC含量: ${features.gcContent.toFixed(1)}% (${gcLevel})</li>`;
+        }
+        
+        if (features.kmerFreq !== undefined) {
+            let complexity = features.kmerFreq > 0.6 ? 'High Complexity' : 'Low Complexity';
+            explanation += `<li>序列复杂度: ${(features.kmerFreq * 100).toFixed(1)}% (${complexity})</li>`;
+        }
+        
+        if (features.entropy !== undefined) {
+            let entropyLevel = features.entropy > 1.8 ? 'High Diversity' : 'Low Diversity';
+            explanation += `<li>序列熵: ${features.entropy.toFixed(3)} (${entropyLevel})</li>`;
+        }
+        
+        if (features.repeatScore !== undefined && features.repeatScore > 0) {
+            explanation += `<li>重复模式得分: ${features.repeatScore.toFixed(1)} (Possible repeats detected)</li>`;
+        }
+        
+        if (explanation) {
+            const explanationDiv = document.createElement('div');
+            explanationDiv.className = 'feature-explanation';
+            explanationDiv.innerHTML = `
+                <div class="sequence-title">特征分析</div>
+                <ul>${explanation}</ul>
+            `;
+            
+            const preview = document.getElementById('sequencePreview');
+            preview.appendChild(explanationDiv);
+        }
+    }
+
     initTimelineChart() {
         const ctx = document.getElementById('timelineChart').getContext('2d');
         this.timelineChart = new Chart(ctx, {
@@ -326,24 +398,25 @@ class DNADiseaseDashboard {
         });
     }
 
-    // 添加缺失的 initProbabilityChart 方法
     initProbabilityChart() {
         const ctx = document.getElementById('probabilityChart').getContext('2d');
         this.probabilityChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: ['High Risk', 'Pathogenic'],
+                labels: ['High Risk', 'Medium Risk', 'Low Risk'],
                 datasets: [
                     {
-                        label: 'Probability Distribution',
-                        data: [0, 0],
+                        label: 'Average Probability',
+                        data: [0, 0, 0],
                         backgroundColor: [
                             'rgba(231, 76, 60, 0.7)',
-                            'rgba(243, 156, 18, 0.7)'
+                            'rgba(243, 156, 18, 0.7)',
+                            'rgba(39, 174, 96, 0.7)'
                         ],
                         borderColor: [
                             'rgba(231, 76, 60, 1)',
-                            'rgba(243, 156, 18, 1)'
+                            'rgba(243, 156, 18, 1)',
+                            'rgba(39, 174, 96, 1)'
                         ],
                         borderWidth: 1
                     }
@@ -366,7 +439,6 @@ class DNADiseaseDashboard {
         });
     }
 
-    // 添加缺失的 updateTimelineChart 方法
     updateTimelineChart() {
         if (!this.timelineChart) return;
         
@@ -389,21 +461,20 @@ class DNADiseaseDashboard {
         this.timelineChart.update();
     }
 
-    // 添加缺失的 updateProbabilityChart 方法
     updateProbabilityChart() {
         if (!this.probabilityChart || !dataLoader.samples) return;
         
-        const samplesWithPredictions = dataLoader.samples.filter(s => s.highRiskProbability !== undefined);
+        const samplesWithPredictions = dataLoader.samples.filter(s => s.probabilities !== undefined);
         if (samplesWithPredictions.length === 0) return;
         
-        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + s.highRiskProbability, 0) / samplesWithPredictions.length;
-        const avgPathogenic = samplesWithPredictions.reduce((sum, s) => sum + s.pathogenicProbability, 0) / samplesWithPredictions.length;
+        const avgHighRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.High, 0) / samplesWithPredictions.length;
+        const avgMediumRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.Medium, 0) / samplesWithPredictions.length;
+        const avgLowRisk = samplesWithPredictions.reduce((sum, s) => sum + s.probabilities.Low, 0) / samplesWithPredictions.length;
         
-        this.probabilityChart.data.datasets[0].data = [avgHighRisk, avgPathogenic];
+        this.probabilityChart.data.datasets[0].data = [avgHighRisk, avgMediumRisk, avgLowRisk];
         this.probabilityChart.update();
     }
 
-    // 添加缺失的 updatePerformanceMetrics 方法
     updatePerformanceMetrics() {
         if (!this.isDataLoaded || !dataLoader.samples) return;
         
@@ -412,6 +483,18 @@ class DNADiseaseDashboard {
         const correctPredictions = predictedSamples.filter(s => s.isCorrect).length;
         const totalPredicted = predictedSamples.length;
         const accuracy = totalPredicted > 0 ? (correctPredictions / totalPredicted * 100).toFixed(1) : 0;
+        
+        // Calculate class-wise accuracy
+        const classStats = {High: {correct: 0, total: 0}, Medium: {correct: 0, total: 0}, Low: {correct: 0, total: 0}};
+        
+        predictedSamples.forEach(sample => {
+            if (classStats[sample.actualRisk]) {
+                classStats[sample.actualRisk].total++;
+                if (sample.isCorrect) {
+                    classStats[sample.actualRisk].correct++;
+                }
+            }
+        });
         
         document.getElementById('accuracyValue').textContent = `${accuracy}%`;
         document.getElementById('samplesValue').textContent = samples.length;
@@ -423,6 +506,35 @@ class DNADiseaseDashboard {
             const modelInfo = diseaseModel.getModelInfo();
             document.getElementById('modelType').textContent = `${modelInfo.type}`;
         }
+        
+        // Show class-wise accuracy if available
+        this.showClassAccuracy(classStats);
+    }
+
+    showClassAccuracy(classStats) {
+        let accuracyInfo = '';
+        
+        Object.keys(classStats).forEach(riskClass => {
+            const stats = classStats[riskClass];
+            if (stats.total > 0) {
+                const classAccuracy = (stats.correct / stats.total * 100).toFixed(1);
+                accuracyInfo += `${riskClass}: ${classAccuracy}% (${stats.correct}/${stats.total})<br>`;
+            }
+        });
+        
+        if (accuracyInfo) {
+            const existingInfo = document.getElementById('classAccuracyInfo');
+            if (existingInfo) {
+                existingInfo.innerHTML = `<strong>Class Accuracy:</strong><br>${accuracyInfo}`;
+            } else {
+                const infoDiv = document.createElement('div');
+                infoDiv.id = 'classAccuracyInfo';
+                infoDiv.className = 'file-info';
+                infoDiv.style.marginTop = '10px';
+                infoDiv.innerHTML = `<strong>Class Accuracy:</strong><br>${accuracyInfo}`;
+                document.getElementById('rankingContainer').parentNode.insertBefore(infoDiv, document.getElementById('rankingContainer'));
+            }
+        }
     }
 
     resetSystem() {
@@ -431,10 +543,12 @@ class DNADiseaseDashboard {
         this.uploadedFile = null;
         this.dataSource = null;
         this.trainingInProgress = false;
+        this.predictionInProgress = false;
         
         dataLoader.samples = [];
         dataLoader.isDataLoaded = false;
         
+        // Clear file input
         document.getElementById('fileUpload').value = '';
         document.getElementById('fileUploadLabel').innerHTML = '<span>📁</span> Upload CSV Dataset';
         document.getElementById('fileInfo').style.display = 'none';
@@ -442,6 +556,12 @@ class DNADiseaseDashboard {
         document.getElementById('loadDatasetBtn').disabled = true;
         document.getElementById('trainModelBtn').disabled = true;
         document.getElementById('runPredictionBtn').disabled = true;
+        
+        // Remove class accuracy info if exists
+        const classAccuracyInfo = document.getElementById('classAccuracyInfo');
+        if (classAccuracyInfo) {
+            classAccuracyInfo.remove();
+        }
         
         this.updateRankingDisplay();
         this.updatePerformanceMetrics();
@@ -454,7 +574,7 @@ class DNADiseaseDashboard {
         }
         
         if (this.probabilityChart) {
-            this.probabilityChart.data.datasets[0].data = [0, 0];
+            this.probabilityChart.data.datasets[0].data = [0, 0, 0];
             this.probabilityChart.update();
         }
         
@@ -466,6 +586,11 @@ class DNADiseaseDashboard {
         // Clear TensorFlow.js memory
         if (tf && tf.memory) {
             tf.disposeVariables();
+        }
+        
+        // Clear prediction cache if exists
+        if (diseaseModel.predictionCache) {
+            diseaseModel.predictionCache.clear();
         }
     }
 }
