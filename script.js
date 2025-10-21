@@ -14,17 +14,17 @@ class DNAClassifier {
 
     init() {
         this.setupEventListeners();
-        this.log('系统初始化完成');
+        this.log('System initialized');
     }
 
     setupEventListeners() {
-        // 文件上传监听
+        // File upload listeners
         document.getElementById('trainFile').addEventListener('change', (e) => this.handleFileUpload(e, 'train'));
         document.getElementById('testFile').addEventListener('change', (e) => this.handleFileUpload(e, 'test'));
         document.getElementById('modelJsonFile').addEventListener('change', (e) => this.updateFileName(e, 'modelJson'));
         document.getElementById('modelWeightsFile').addEventListener('change', (e) => this.updateFileName(e, 'modelWeights'));
 
-        // 按钮监听
+        // Button listeners
         document.getElementById('trainBtn').addEventListener('click', () => this.trainModel());
         document.getElementById('evaluateBtn').addEventListener('click', () => this.evaluateModel());
         document.getElementById('testRandomBtn').addEventListener('click', () => this.testRandomSamples());
@@ -62,7 +62,7 @@ class DNAClassifier {
         const file = event.target.files[0];
         if (!file) return;
 
-        this.log(`加载${dataType === 'train' ? '训练' : '测试'}数据: ${file.name}`);
+        this.log(`Loading ${dataType === 'train' ? 'training' : 'testing'} data: ${file.name}`);
         
         try {
             const data = await DataLoader.loadCSV(file);
@@ -70,42 +70,42 @@ class DNAClassifier {
             if (dataType === 'train') {
                 this.trainData = DataLoader.processData(data);
                 document.getElementById('trainSamples').textContent = this.trainData.features.length;
-                this.log(`训练数据加载完成: ${this.trainData.features.length} 个样本`);
+                this.log(`Training data loaded: ${this.trainData.features.length} samples`);
             } else {
                 this.testData = DataLoader.processData(data);
                 document.getElementById('testSamples').textContent = this.testData.features.length;
-                this.log(`测试数据加载完成: ${this.testData.features.length} 个样本`);
+                this.log(`Testing data loaded: ${this.testData.features.length} samples`);
             }
             
             this.updateFileName(event, dataType);
         } catch (error) {
-            this.log(`错误: 加载数据失败 - ${error.message}`);
+            this.log(`Error: Failed to load data - ${error.message}`);
         }
     }
 
     async trainModel() {
         if (!this.trainData) {
-            this.log('错误: 请先上传训练数据');
+            this.log('Error: Please upload training data first');
             return;
         }
 
         if (this.isTraining) {
-            this.log('训练正在进行中，请等待...');
+            this.log('Training in progress, please wait...');
             return;
         }
 
         this.isTraining = true;
-        this.log('开始训练模型...');
+        this.log('Starting model training...');
 
         try {
-            // 创建或重置模型
+            // Create or reset model
             this.model = ModelBuilder.createModel(this.trainData.features[0].length, this.classLabels.length);
             
             const { features, labels } = this.trainData;
             const xs = tf.tensor2d(features);
             const ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
-            // 训练配置
+            // Training configuration
             const epochs = 50;
             const batchSize = 32;
             const validationSplit = 0.2;
@@ -116,16 +116,16 @@ class DNAClassifier {
                 validationSplit: validationSplit,
                 callbacks: {
                     onEpochEnd: (epoch, logs) => {
-                        this.log(`Epoch ${epoch + 1}/${epochs} - 准确率: ${(logs.acc * 100).toFixed(2)}%, 验证准确率: ${(logs.val_acc * 100).toFixed(2)}%, 损失: ${logs.loss.toFixed(4)}`);
+                        this.log(`Epoch ${epoch + 1}/${epochs} - Accuracy: ${(logs.acc * 100).toFixed(2)}%, Val Accuracy: ${(logs.val_acc * 100).toFixed(2)}%, Loss: ${logs.loss.toFixed(4)}`);
                     }
                 }
             });
 
-            this.log('训练完成!');
+            this.log('Training completed!');
             this.updateModelInfo();
 
         } catch (error) {
-            this.log(`训练错误: ${error.message}`);
+            this.log(`Training error: ${error.message}`);
         } finally {
             this.isTraining = false;
         }
@@ -133,16 +133,16 @@ class DNAClassifier {
 
     async evaluateModel() {
         if (!this.model) {
-            this.log('错误: 没有可用的模型，请先训练或加载模型');
+            this.log('Error: No model available, please train or load a model first');
             return;
         }
 
         if (!this.testData) {
-            this.log('错误: 请先上传测试数据');
+            this.log('Error: Please upload test data first');
             return;
         }
 
-        this.log('开始评估模型...');
+        this.log('Starting model evaluation...');
 
         const { features, labels } = this.testData;
         const xs = tf.tensor2d(features);
@@ -152,7 +152,7 @@ class DNAClassifier {
         const loss = evaluation[0].dataSync()[0];
         const accuracy = evaluation[1].dataSync()[0];
 
-        this.log(`评估结果 - 准确率: ${(accuracy * 100).toFixed(2)}%, 损失: ${loss.toFixed(4)}`);
+        this.log(`Evaluation results - Accuracy: ${(accuracy * 100).toFixed(2)}%, Loss: ${loss.toFixed(4)}`);
 
         xs.dispose();
         ys.dispose();
@@ -161,7 +161,7 @@ class DNAClassifier {
 
     async testRandomSamples() {
         if (!this.model || !this.testData) {
-            this.log('错误: 没有可用的模型或测试数据');
+            this.log('Error: No model or test data available');
             return;
         }
 
@@ -169,7 +169,7 @@ class DNAClassifier {
         const resultsContainer = document.getElementById('randomTestResults');
         resultsContainer.innerHTML = '';
 
-        // 随机选择5个样本
+        // Randomly select 5 samples
         const indices = [];
         for (let i = 0; i < Math.min(5, features.length); i++) {
             indices.push(Math.floor(Math.random() * features.length));
@@ -191,11 +191,11 @@ class DNAClassifier {
             const resultDiv = document.createElement('div');
             resultDiv.className = `random-test-item ${predictedClass === trueClass ? '' : 'error'}`;
             resultDiv.innerHTML = `
-                <strong>样本 ${index + 1}</strong><br>
-                <small>序列: ${sequence.substring(0, 50)}${sequence.length > 50 ? '...' : ''}</small><br>
-                真实标签: ${trueClass} | 预测: ${predictedClass}<br>
-                置信度: ${confidence.toFixed(2)}%<br>
-                ${predictedClass === trueClass ? '✅ 正确' : '❌ 错误'}
+                <strong>Sample ${index + 1}</strong><br>
+                <small>Sequence: ${sequence.substring(0, 50)}${sequence.length > 50 ? '...' : ''}</small><br>
+                True Label: ${trueClass} | Predicted: ${predictedClass}<br>
+                Confidence: ${confidence.toFixed(2)}%<br>
+                ${predictedClass === trueClass ? '✅ Correct' : '❌ Incorrect'}
             `;
 
             resultsContainer.appendChild(resultDiv);
@@ -203,29 +203,29 @@ class DNAClassifier {
             prediction.dispose();
         }
 
-        this.log('随机测试完成');
+        this.log('Random testing completed');
     }
 
     async testSingleSequence() {
         const sequenceInput = document.getElementById('singleSequence').value.trim().toUpperCase();
         
         if (!sequenceInput) {
-            this.log('错误: 请输入DNA序列');
+            this.log('Error: Please enter a DNA sequence');
             return;
         }
 
         if (!/^[ATCG]+$/.test(sequenceInput)) {
-            this.log('错误: DNA序列只能包含 A, T, C, G 字符');
+            this.log('Error: DNA sequence can only contain A, T, C, G characters');
             return;
         }
 
         if (!this.model) {
-            this.log('错误: 没有可用的模型，请先训练或加载模型');
+            this.log('Error: No model available, please train or load a model first');
             return;
         }
 
         try {
-            // 提取特征
+            // Extract features
             const features = DataLoader.extractFeaturesFromSequence(sequenceInput);
             const inputTensor = tf.tensor2d([features]);
             const prediction = this.model.predict(inputTensor);
@@ -236,11 +236,11 @@ class DNAClassifier {
             
             const resultDiv = document.getElementById('singleTestResult');
             resultDiv.innerHTML = `
-                <div class="prediction-result">预测结果: ${predictedClass}</div>
+                <div class="prediction-result">Prediction: ${predictedClass}</div>
                 <div class="confidence-bar">
                     <div class="confidence-fill" style="width: ${maxConfidence * 100}%"></div>
                 </div>
-                <div>置信度: ${(maxConfidence * 100).toFixed(2)}%</div>
+                <div>Confidence: ${(maxConfidence * 100).toFixed(2)}%</div>
                 <div class="confidence-breakdown">
                     ${this.classLabels.map((label, index) => 
                         `${label}: ${(results[index] * 100).toFixed(2)}%`
@@ -248,42 +248,42 @@ class DNAClassifier {
                 </div>
             `;
 
-            this.log(`单序列测试完成: ${predictedClass} (${(maxConfidence * 100).toFixed(2)}%)`);
+            this.log(`Single sequence test completed: ${predictedClass} (${(maxConfidence * 100).toFixed(2)}%)`);
             
             inputTensor.dispose();
             prediction.dispose();
         } catch (error) {
-            this.log(`单序列测试错误: ${error.message}`);
+            this.log(`Single sequence test error: ${error.message}`);
         }
     }
 
     async saveModel() {
         if (!this.model) {
-            this.log('错误: 没有可保存的模型');
+            this.log('Error: No model to save');
             return;
         }
 
-        this.log('保存模型中...');
+        this.log('Saving model...');
 
         try {
-            // 保存模型结构
+            // Save model architecture
             const modelJson = this.model.toJSON();
             const modelJsonStr = JSON.stringify(modelJson);
             const modelJsonBlob = new Blob([modelJsonStr], { type: 'application/json' });
             
-            // 触发下载
+            // Trigger download
             const modelJsonUrl = URL.createObjectURL(modelJsonBlob);
             const modelJsonLink = document.createElement('a');
             modelJsonLink.href = modelJsonUrl;
             modelJsonLink.download = 'dna-model.json';
             modelJsonLink.click();
 
-            // 保存权重
+            // Save weights
             await this.model.save('downloads://dna-model');
 
-            this.log('模型保存成功! 检查下载文件夹获取 dna-model.json 和 dna-model.weights.bin');
+            this.log('Model saved successfully! Check your downloads folder for dna-model.json and dna-model.weights.bin');
         } catch (error) {
-            this.log(`保存模型错误: ${error.message}`);
+            this.log(`Model save error: ${error.message}`);
         }
     }
 
@@ -292,11 +292,11 @@ class DNAClassifier {
         const weightsFile = document.getElementById('modelWeightsFile').files[0];
 
         if (!jsonFile || !weightsFile) {
-            this.log('错误: 请选择模型JSON和权重文件');
+            this.log('Error: Please select both model JSON and weights files');
             return;
         }
 
-        this.log('加载模型中...');
+        this.log('Loading model...');
 
         try {
             const modelJson = await new Promise((resolve, reject) => {
@@ -314,10 +314,10 @@ class DNAClassifier {
             });
 
             this.model = await tf.loadLayersModel(tf.io.fromMemory(modelJson, modelWeights));
-            this.log('模型加载成功!');
+            this.log('Model loaded successfully!');
             this.updateModelInfo();
         } catch (error) {
-            this.log(`加载模型错误: ${error.message}`);
+            this.log(`Model load error: ${error.message}`);
         }
     }
 
@@ -349,23 +349,23 @@ class DNAClassifier {
         document.getElementById('randomTestResults').innerHTML = '';
         document.getElementById('singleTestResult').innerHTML = '';
         
-        // 重置文件输入
+        // Reset file inputs
         document.getElementById('trainFile').value = '';
         document.getElementById('testFile').value = '';
         document.getElementById('modelJsonFile').value = '';
         document.getElementById('modelWeightsFile').value = '';
         document.getElementById('singleSequence').value = '';
         
-        document.getElementById('trainFileName').textContent = '未选择文件';
-        document.getElementById('testFileName').textContent = '未选择文件';
-        document.getElementById('modelJsonFileName').textContent = '未选择文件';
-        document.getElementById('modelWeightsFileName').textContent = '未选择文件';
+        document.getElementById('trainFileName').textContent = 'No file chosen';
+        document.getElementById('testFileName').textContent = 'No file chosen';
+        document.getElementById('modelJsonFileName').textContent = 'No file chosen';
+        document.getElementById('modelWeightsFileName').textContent = 'No file chosen';
 
-        this.log('系统已重置');
+        this.log('System reset');
     }
 }
 
-// 初始化应用
+// Initialize application
 let dnaClassifier;
 document.addEventListener('DOMContentLoaded', () => {
     dnaClassifier = new DNAClassifier();
