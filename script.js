@@ -58,6 +58,29 @@ class DNAClassifier {
         }
     }
 
+    async detectDelimiter(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const content = e.target.result;
+                const firstLine = content.split('\n')[0];
+                
+                // 检测分隔符
+                if (firstLine.includes('\t')) {
+                    resolve('\t');
+                } else if (firstLine.includes(',')) {
+                    resolve(',');
+                } else if (firstLine.includes(';')) {
+                    resolve(';');
+                } else {
+                    // 默认使用空格分隔
+                    resolve(' ');
+                }
+            };
+            reader.readAsText(file);
+        });
+    }
+
     async handleFileUpload(event, dataType) {
         const file = event.target.files[0];
         if (!file) return;
@@ -65,7 +88,11 @@ class DNAClassifier {
         this.log(`Loading ${dataType === 'train' ? 'training' : 'testing'} data: ${file.name}`);
         
         try {
-            const data = await DataLoader.loadCSV(file);
+            // 自动检测分隔符
+            const delimiter = await this.detectDelimiter(file);
+            this.log(`Detected delimiter: ${delimiter === '\t' ? 'tab' : delimiter}`);
+            
+            const data = await DataLoader.loadCSV(file, delimiter);
             
             if (dataType === 'train') {
                 this.trainData = DataLoader.processData(data);
@@ -80,6 +107,7 @@ class DNAClassifier {
             this.updateFileName(event, dataType);
         } catch (error) {
             this.log(`Error: Failed to load data - ${error.message}`);
+            console.error('Detailed error:', error);
         }
     }
 
