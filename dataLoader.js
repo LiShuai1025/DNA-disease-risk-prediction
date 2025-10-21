@@ -4,6 +4,8 @@ class DataLoader {
             Papa.parse(file, {
                 header: true,
                 dynamicTyping: true,
+                delimiter: '\t', // 改为制表符分隔
+                skipEmptyLines: true,
                 complete: (results) => {
                     if (results.errors.length > 0) {
                         reject(new Error(results.errors[0].message));
@@ -41,37 +43,43 @@ class DataLoader {
 
     static extractFeaturesFromRow(row) {
         try {
+            // 处理可能的数值格式问题
             return [
-                row.GC_Content || 0,
-                row.AT_Content || 0,
-                row.Sequence_Length || 0,
-                row.Num_A || 0,
-                row.Num_T || 0,
-                row.Num_C || 0,
-                row.Num_G || 0,
-                row.kmer_3_freq || 0
+                parseFloat(row.GC_Content) || 0,
+                parseFloat(row.AT_Content) || 0,
+                parseInt(row.Sequence_Length) || 0,
+                parseInt(row.Num_A) || 0,
+                parseInt(row.Num_T) || 0,
+                parseInt(row.Num_C) || 0,
+                parseInt(row.Num_G) || 0,
+                parseFloat(row.kmer_3_freq) || 0
             ];
         } catch (error) {
-            console.error('Feature extraction error:', error);
+            console.error('Feature extraction error:', error, row);
             return null;
         }
     }
 
     static extractFeaturesFromSequence(sequence) {
-        const numA = (sequence.match(/A/g) || []).length;
-        const numT = (sequence.match(/T/g) || []).length;
-        const numC = (sequence.match(/C/g) || []).length;
-        const numG = (sequence.match(/G/g) || []).length;
-        const sequenceLength = sequence.length;
+        // 清理序列（移除数字和其他非ATCG字符）
+        const cleanSequence = sequence.replace(/[^ATCG]/gi, '').toUpperCase();
+        
+        const numA = (cleanSequence.match(/A/g) || []).length;
+        const numT = (cleanSequence.match(/T/g) || []).length;
+        const numC = (cleanSequence.match(/C/g) || []).length;
+        const numG = (cleanSequence.match(/G/g) || []).length;
+        const sequenceLength = cleanSequence.length;
 
-        const gcContent = (numG + numC) / sequenceLength;
-        const atContent = (numA + numT) / sequenceLength;
-        const kmer3Freq = this.calculateKmerFrequency(sequence, 3);
+        const gcContent = sequenceLength > 0 ? (numG + numC) / sequenceLength : 0;
+        const atContent = sequenceLength > 0 ? (numA + numT) / sequenceLength : 0;
+        const kmer3Freq = this.calculateKmerFrequency(cleanSequence, 3);
 
         return [gcContent, atContent, sequenceLength, numA, numT, numC, numG, kmer3Freq];
     }
 
     static calculateKmerFrequency(sequence, k) {
+        if (sequence.length < k) return 0;
+        
         const kmers = new Map();
         for (let i = 0; i <= sequence.length - k; i++) {
             const kmer = sequence.substring(i, i + k);
@@ -82,6 +90,7 @@ class DataLoader {
 
     static getClassLabelIndex(label) {
         const labels = ['Human', 'Bacteria', 'Virus', 'Plant'];
-        return labels.indexOf(label);
+        const cleanLabel = label.trim();
+        return labels.indexOf(cleanLabel);
     }
 }
