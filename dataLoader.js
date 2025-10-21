@@ -7,19 +7,16 @@ class DataLoader {
                 delimiter: delimiter,
                 skipEmptyLines: true,
                 transform: function(value) {
-                    // Clean data values
                     return typeof value === 'string' ? value.trim() : value;
                 },
                 complete: (results) => {
                     if (results.errors.length > 0) {
                         reject(new Error(results.errors[0].message));
                     } else {
-                        // Validate data format
                         const validation = this.validateDataFormat(results.data);
                         if (!validation.isValid) {
                             reject(new Error(validation.message));
                         } else {
-                            // Validate feature fields
                             this.validateFeatureFields(results.data);
                             resolve(results.data);
                         }
@@ -50,7 +47,7 @@ class DataLoader {
 
         let validCount = 0;
         for (const row of data) {
-            if (row.Sequence && row.Class_Label) {
+            if (row.Sequence && row.Class_Label && /^[ATCGatcg]+$/.test(row.Sequence.toString())) {
                 validCount++;
             }
         }
@@ -85,18 +82,15 @@ class DataLoader {
             sequenceLengths: []
         };
 
-        // Class distribution
         data.forEach(row => {
             const label = row.Class_Label;
             analysis.classDistribution[label] = (analysis.classDistribution[label] || 0) + 1;
             
-            // Sequence lengths
             if (row.Sequence) {
                 analysis.sequenceLengths.push(row.Sequence.length);
             }
         });
 
-        // Feature statistics
         const features = ['GC_Content', 'AT_Content', 'Sequence_Length', 'kmer_3_freq'];
         features.forEach(feature => {
             const values = data.map(row => parseFloat(row[feature])).filter(v => !isNaN(v));
@@ -119,7 +113,6 @@ class DataLoader {
         const numFeatures = features[0].length;
         const normalized = [];
         
-        // Calculate mean and std for each feature
         const means = [];
         const stds = [];
         
@@ -129,10 +122,9 @@ class DataLoader {
             const std = Math.sqrt(featureValues.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / featureValues.length);
             
             means.push(mean);
-            stds.push(std || 1); // Avoid division by zero
+            stds.push(std || 1);
         }
         
-        // Normalize features
         for (const feature of features) {
             const normalizedFeature = feature.map((value, i) => {
                 return (value - means[i]) / stds[i];
@@ -148,7 +140,6 @@ class DataLoader {
         const labels = [];
         const processedData = [];
 
-        // Analyze data first
         const analysis = this.analyzeData(rawData);
 
         for (const row of rawData) {
@@ -164,7 +155,6 @@ class DataLoader {
             }
         }
 
-        // Normalize features
         const normalizedFeatures = this.normalizeFeatures(features);
 
         return { 
@@ -202,12 +192,11 @@ class DataLoader {
         return 0;
     }
 
-    static extractFeaturesFromSequence(sequence) {
-        // Clean sequence (remove numbers and non-ATCG characters)
+    static extractFeaturesFromSequence(sequence, k = 3) {
         const cleanSequence = sequence.replace(/[^ATCGatcg]/g, '').toUpperCase();
         
         if (cleanSequence.length === 0) {
-            return [0, 0, 0, 0, 0, 0, 0, 0];
+            return new Array(8).fill(0);
         }
         
         const numA = (cleanSequence.match(/A/g) || []).length;
@@ -218,7 +207,7 @@ class DataLoader {
 
         const gcContent = (numG + numC) / sequenceLength;
         const atContent = (numA + numT) / sequenceLength;
-        const kmer3Freq = this.calculateKmerFrequency(cleanSequence, 3);
+        const kmer3Freq = this.calculateKmerFrequency(cleanSequence, k);
 
         return [gcContent, atContent, sequenceLength, numA, numT, numC, numG, kmer3Freq];
     }
