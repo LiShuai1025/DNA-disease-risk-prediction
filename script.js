@@ -4,6 +4,8 @@ class DNAClassifier {
         this.trainData = null;
         this.testData = null;
         this.isTraining = false;
+        this.shouldStopTraining = false;
+        this.trainingWorker = null;
         this.classLabels = ['Human', 'Bacteria', 'Virus', 'Plant'];
         this.featureNames = [
             'GC_Content', 'AT_Content', 'Sequence_Length', 
@@ -156,61 +158,201 @@ class DNAClassifier {
         }
 
         this.isTraining = true;
-        this.log(`Starting model training with ${this.modelType} architecture...`);
+        this.shouldStopTraining = false;
+        this.updateTrainingUI(true);
 
-        let xs, ys;
         try {
-            this.model = ModelBuilder.createModel(
-                this.trainData.features[0].length, 
-                this.classLabels.length,
-                this.modelType
-            );
+            const trainingConfig = this.getTrainingConfig();
+            this.log(`Starting ${this.modelType} model training with ${trainingConfig.epochs} epochs...`);
             
-            const { features, labels } = this.trainData;
-            
-            // Prepare data based on model type
             if (this.modelType === 'rnn') {
-                xs = this.prepareRNNData(features);
+                await this.trainRNNModel(trainingConfig);
             } else {
-                xs = tf.tensor2d(features);
+                await this.trainStandardModel(trainingConfig);
             }
-            
-            ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
-            const epochs = 100;
-            const batchSize = Math.min(32, features.length);
-            const validationSplit = 0.2;
+            if (!this.shouldStopTraining) {
+                this.log('Model training completed successfully!', 'success');
+                this.updateModelInfo();
+                await this.evaluateOnTrainData();
+            }
 
-            let bestValAcc = 0;
-            let patience = 10;
-            let patienceCounter = 0;
+        } catch (error) {
+            if (!this.shouldStopTraining) {
+                this.log(`Training error: ${error.message}`, 'error');
+                console.error('Training error details:', error);
+            }
+        } finally {
+            this.isTraining = false;
+            this.shouldStopTraining = false;
+            this.updateTrainingUI(false);
+            tf.engine().startScope();
+            tf.engine().endScope();
+        }
+    }
 
-            this.trainingHistory = [];
-            
+    getTrainingConfig() {
+        const baseConfig = {
+            epochs: 50,
+            batchSize: 16,
+            validationSplit: 0.2,
+            patience: 8
+        };
+
+        switch (this.modelType) {
+            case 'rnn':
+                return {
+                    ...baseConfig,
+                    epochs: 30,
+                    batchSize: 8,
+                    learningRate: 0.0005
+                };
+            case 'deep_dense':
+                return {
+                    ...baseConfig,
+                    epochs: 60,
+                    batchSize: 16
+                };
+            case 'cnn':
+                return {
+                    ...baseConfig,
+                    epochs: 40,
+                    batchSize: 16
+                };
+            default:
+                return {
+                    ...baseConfig,
+                    epochs: 50,
+                    batchSize: 16
+                };
+        }
+    }
+
+    async trainRNNModel(config) {
+        this.log('Using optimized training for RNN model...', 'info');
+        
+        const { features, labels } = this.trainData;
+        this.model = ModelBuilder.createModel(
+            features[0].length, 
+            this.classLabels.length,
+            this.modelType
+        );
+
+        const xs = this.prepareRNNData(features);
+        const ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
+
+        let bestValAcc = 0;
+        let patienceCounter = 0;
+        this.trainingHistory = [];
+
+        try {
+            for (let epoch = 0; epoch < config.epochs; epoch++) {
+                if (this.shouldStopTraining) {
+                    this.log('Training stopped by user', 'warning');
+                    break;
+                }
+
+                const history = await this.model.fit(xs, ys, {
+                    epochs: 1,
+                    batchSize: config.batchSize,
+                    validationSplit: config.validationSplit,
+                    verbose: 0
+                });
+
+                const logs = history.history;
+                const currentAcc = logs.acc[0];
+                const currentValAcc = logs.val_acc[0];
+                const currentLoss = logs.loss[0];
+                const currentValLoss = logs.val_loss[0];
+
+                this.trainingHistory.push({
+                    epoch: epoch + 1,
+                    accuracy: currentAcc,
+                    val_accuracy: currentValAcc,
+                    loss: currentLoss,
+                    val_loss: currentValLoss
+                });
+
+                const progress = ((epoch + 1) / config.epochs * 100).toFixed(1);
+                this.updateProgress(progress, epoch + 1, config.epochs);
+
+                this.log(`Epoch ${epoch + 1}/${config.epochs} (${progress}%) - ` +
+                        `Acc: ${(currentAcc * 100).toFixed(2)}%, ` +
+                        `Val Acc: ${(currentValAcc * 100).toFixed(2)}%, ` +
+                        `Loss: ${currentLoss.toFixed(4)}`);
+
+                if (currentValAcc > bestValAcc) {
+                    bestValAcc = currentValAcc;
+                    patienceCounter = 0;
+                } else {
+                    patienceCounter++;
+                }
+
+                if (patienceCounter >= config.patience) {
+                    this.log(`Early stopping at epoch ${epoch + 1}`, 'warning');
+                    break;
+                }
+
+                if (epoch % 5 === 0) {
+                    await this.cleanupMemory();
+                }
+
+                await new Promise(resolve => setTimeout(resolve, 0));
+            }
+
+        } finally {
+            if (xs) xs.dispose();
+            if (ys) ys.dispose();
+        }
+    }
+
+    async trainStandardModel(config) {
+        const { features, labels } = this.trainData;
+        
+        this.model = ModelBuilder.createModel(
+            features[0].length, 
+            this.classLabels.length,
+            this.modelType
+        );
+
+        const xs = tf.tensor2d(features);
+        const ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
+
+        let bestValAcc = 0;
+        let patienceCounter = 0;
+        this.trainingHistory = [];
+
+        try {
             await this.model.fit(xs, ys, {
-                epochs: epochs,
-                batchSize: batchSize,
-                validationSplit: validationSplit,
+                epochs: config.epochs,
+                batchSize: config.batchSize,
+                validationSplit: config.validationSplit,
                 callbacks: {
                     onEpochEnd: async (epoch, logs) => {
+                        if (this.shouldStopTraining) {
+                            this.model.stopTraining = true;
+                            return;
+                        }
+
                         const currentValAcc = logs.val_acc;
                         const currentAcc = logs.acc;
-                        const currentLoss = logs.loss;
-                        const currentValLoss = logs.val_loss;
                         
                         this.trainingHistory.push({
                             epoch: epoch + 1,
                             accuracy: currentAcc,
                             val_accuracy: currentValAcc,
-                            loss: currentLoss,
-                            val_loss: currentValLoss
+                            loss: logs.loss,
+                            val_loss: logs.val_loss
                         });
-                        
-                        this.log(`Epoch ${epoch + 1}/${epochs} - ` +
+
+                        const progress = ((epoch + 1) / config.epochs * 100).toFixed(1);
+                        this.updateProgress(progress, epoch + 1, config.epochs);
+
+                        this.log(`Epoch ${epoch + 1}/${config.epochs} (${progress}%) - ` +
                                 `Accuracy: ${(currentAcc * 100).toFixed(2)}%, ` +
                                 `Val Accuracy: ${(currentValAcc * 100).toFixed(2)}%, ` +
-                                `Loss: ${currentLoss.toFixed(4)}, ` +
-                                `Val Loss: ${currentValLoss.toFixed(4)}`);
+                                `Loss: ${logs.loss.toFixed(4)}, ` +
+                                `Val Loss: ${logs.val_loss.toFixed(4)}`);
 
                         if (currentValAcc > bestValAcc) {
                             bestValAcc = currentValAcc;
@@ -220,7 +362,7 @@ class DNAClassifier {
                             patienceCounter++;
                         }
 
-                        if (patienceCounter >= patience) {
+                        if (patienceCounter >= config.patience) {
                             this.log(`Early stopping triggered at epoch ${epoch + 1}`, 'warning');
                             this.model.stopTraining = true;
                         }
@@ -232,28 +374,53 @@ class DNAClassifier {
                 }
             });
 
-            this.log('Model training completed successfully!', 'success');
-            this.updateModelInfo();
-
-            await this.evaluateOnTrainData();
-
-        } catch (error) {
-            this.log(`Training error: ${error.message}`, 'error');
-            console.error('Training error details:', error);
         } finally {
-            this.isTraining = false;
-            
             if (xs) xs.dispose();
             if (ys) ys.dispose();
         }
     }
 
+    stopTraining() {
+        if (this.isTraining) {
+            this.shouldStopTraining = true;
+            this.log('Stopping training...', 'warning');
+            
+            if (this.trainingWorker) {
+                this.trainingWorker.terminate();
+                this.trainingWorker = null;
+            }
+            
+            if (this.model) {
+                this.model.stopTraining = true;
+            }
+        }
+    }
+
+    updateTrainingUI(training) {
+        const trainBtn = document.getElementById('trainBtn');
+        if (training) {
+            trainBtn.textContent = 'Stop Training';
+            trainBtn.style.background = '#dc3545';
+        } else {
+            trainBtn.textContent = 'Train Model';
+            trainBtn.style.background = '#28a745';
+        }
+    }
+
+    updateProgress(progress, currentEpoch, totalEpochs) {
+        this.log(`Training progress: ${progress}% (Epoch ${currentEpoch}/${totalEpochs})`, 'info');
+    }
+
+    async cleanupMemory() {
+        tf.engine().startScope();
+        tf.engine().endScope();
+        await tf.nextFrame();
+    }
+
     prepareRNNData(features) {
-        // Reshape features for RNN: [samples, timesteps, features]
-        // Using 8 timesteps with 1 feature each
         const timesteps = 8;
         const reshapedFeatures = features.map(featureArray => {
-            return featureArray.map(value => [value]); // Convert each feature to [value]
+            return featureArray.map(value => [value]);
         });
         
         return tf.tensor3d(reshapedFeatures, [features.length, timesteps, 1]);
@@ -346,7 +513,7 @@ class DNAClassifier {
         resultsContainer.innerHTML = '';
 
         const indices = [];
-        const sampleCount = Math.min(5, features.length);
+        const sampleCount = Math.min(3, features.length);
         for (let i = 0; i < sampleCount; i++) {
             indices.push(Math.floor(Math.random() * features.length));
         }
@@ -363,6 +530,7 @@ class DNAClassifier {
                 if (this.modelType === 'rnn') {
                     const rnnFeature = feature.map(value => [value]);
                     inputTensor = tf.tensor3d([rnnFeature], [1, 8, 1]);
+                    this.log(`RNN test input shape: [${inputTensor.shape}]`, 'info');
                 } else {
                     inputTensor = tf.tensor2d([feature]);
                 }
@@ -423,17 +591,26 @@ class DNAClassifier {
         try {
             const features = DataLoader.extractFeaturesFromSequence(sequenceInput, 3);
             
-            // Ensure feature dimension matches model input
-            const modelInputDim = this.model.inputs[0].shape[1];
-            if (features.length !== modelInputDim && this.modelType !== 'rnn') {
-                this.log(`Warning: Feature dimension (${features.length}) doesn't match model input (${modelInputDim}). Attempting to adjust...`, 'warning');
-                features.length = Math.min(features.length, modelInputDim);
-            }
-            
             if (this.modelType === 'rnn') {
+                if (features.length !== 8) {
+                    this.log(`Warning: Feature count (${features.length}) doesn't match RNN expected (8). Adjusting...`, 'warning');
+                    const adjustedFeatures = new Array(8).fill(0);
+                    features.forEach((val, idx) => {
+                        if (idx < 8) adjustedFeatures[idx] = val;
+                    });
+                    features.length = 0;
+                    features.push(...adjustedFeatures);
+                }
+                
                 const rnnFeatures = features.map(value => [value]);
                 inputTensor = tf.tensor3d([rnnFeatures], [1, 8, 1]);
+                this.log(`RNN input shape: [${inputTensor.shape}]`, 'info');
             } else {
+                const modelInputDim = this.model.inputs[0].shape[1];
+                if (features.length !== modelInputDim) {
+                    this.log(`Warning: Feature dimension (${features.length}) doesn't match model input (${modelInputDim}). Adjusting...`, 'warning');
+                    features.length = Math.min(features.length, modelInputDim);
+                }
                 inputTensor = tf.tensor2d([features]);
             }
             
@@ -443,7 +620,6 @@ class DNAClassifier {
             const maxConfidence = Math.max(...results);
             const predictedClassIndex = results.indexOf(maxConfidence);
             
-            // Handle output dimension mismatch
             let predictedClass;
             if (predictedClassIndex < this.classLabels.length) {
                 predictedClass = this.classLabels[predictedClassIndex];
@@ -564,24 +740,23 @@ class DNAClassifier {
         try {
             this.log('Attempting to load model using standard method...');
             
-            // Method 1: Standard loading
             this.model = await tf.loadLayersModel(
                 tf.io.browserFiles([jsonFile, weightsFile])
             );
             
             this.log('Model loaded successfully using standard method!', 'success');
             
-            // Print model information for debugging
             this.log('Model information:', 'info');
             this.model.summary();
             
-            // More flexible validation
+            const modelType = this.determineModelTypeFromLoaded(this.model);
+            this.modelType = modelType;
+            this.log(`Detected model type: ${modelType}`, 'info');
+            
             const isValid = await this.validateLoadedModel();
             if (isValid) {
                 this.log('Model is ready for use!', 'success');
                 this.updateModelInfo();
-                
-                // Allow model usage even if validation is not perfect
                 return;
             } else {
                 this.log('Model validation showed issues, but attempting to use it anyway...', 'warning');
@@ -590,17 +765,34 @@ class DNAClassifier {
             
         } catch (error) {
             this.log(`Standard loading failed: ${error.message}`, 'warning');
-            
-            // Method 2: Try manual reconstruction
             await this.reconstructModelManually(jsonFile, weightsFile);
         }
+    }
+
+    determineModelTypeFromLoaded(model) {
+        const layers = model.layers;
+        let hasLSTM = false;
+        let hasConv = false;
+        
+        layers.forEach(layer => {
+            const className = layer.getClassName();
+            if (className.includes('LSTM')) hasLSTM = true;
+            if (className.includes('Conv')) hasConv = true;
+        });
+
+        const inputShape = model.inputs[0].shape;
+        const is3DInput = inputShape.length === 3;
+
+        if (hasLSTM || is3DInput) return 'rnn';
+        if (hasConv) return 'cnn';
+        if (layers.length > 8) return 'deep_dense';
+        return 'improved_dense';
     }
 
     async reconstructModelManually(jsonFile, weightsFile) {
         try {
             this.log('Attempting manual model reconstruction...');
             
-            // Read model JSON
             const modelJson = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
@@ -614,17 +806,14 @@ class DNAClassifier {
                 reader.readAsText(jsonFile);
             });
 
-            // Analyze model structure
             const inputDim = this.determineInputDimension(modelJson);
             const outputDim = this.determineOutputDimension(modelJson);
             const modelType = this.determineModelType(modelJson);
             
             this.log(`Reconstructing model - Input: ${inputDim}, Output: ${outputDim}, Type: ${modelType}`);
             
-            // Create new model
             this.model = ModelBuilder.createModel(inputDim, outputDim, modelType);
             
-            // Load weights
             await this.loadWeightsManually(weightsFile);
             
             this.log('Manual reconstruction completed!', 'success');
@@ -637,15 +826,13 @@ class DNAClassifier {
     }
 
     determineInputDimension(modelJson) {
-        // Try to extract input dimension from model JSON
         if (modelJson.modelTopology?.config?.layers?.[0]?.config?.batch_input_shape) {
             return modelJson.modelTopology.config.layers[0].config.batch_input_shape[1];
         }
-        return 8; // Default feature dimension
+        return 8;
     }
 
     determineOutputDimension(modelJson) {
-        // Try to extract output dimension from model JSON
         const layers = modelJson.modelTopology?.config?.layers;
         if (layers && layers.length > 0) {
             const outputLayer = layers[layers.length - 1];
@@ -653,20 +840,35 @@ class DNAClassifier {
                 return outputLayer.config.units;
             }
         }
-        return this.classLabels.length; // Default number of classes
+        return this.classLabels.length;
     }
 
     determineModelType(modelJson) {
         const layers = modelJson.modelTopology?.config?.layers || [];
-        const hasConv = layers.some(layer => 
-            layer.className?.includes('Conv') || layer.className?.includes('conv')
-        );
         
         const hasLSTM = layers.some(layer => 
-            layer.className?.includes('LSTM') || layer.className?.includes('lstm')
+            layer.className?.includes('LSTM') || 
+            layer.className?.includes('Lstm') ||
+            layer.className?.includes('lstm')
         );
         
-        if (hasLSTM) return 'rnn';
+        const hasConv = layers.some(layer => 
+            layer.className?.includes('Conv') || 
+            layer.className?.includes('conv')
+        );
+        
+        const firstLayer = layers[0];
+        const is3DInput = firstLayer?.config?.batch_input_shape?.length === 3;
+        
+        console.log('Model type detection:', {
+            layers: layers.map(l => l.className),
+            hasLSTM,
+            hasConv,
+            is3DInput,
+            firstLayerInput: firstLayer?.config?.batch_input_shape
+        });
+        
+        if (hasLSTM || is3DInput) return 'rnn';
         if (hasConv) return 'cnn';
         if (layers.length > 8) return 'deep_dense';
         return 'improved_dense';
@@ -693,8 +895,13 @@ class DNAClassifier {
         if (!this.model) return false;
         
         try {
-            // Use more detailed validation method
-            const testInput = tf.ones([1, 8]); // 8 features
+            let testInput;
+            if (this.modelType === 'rnn') {
+                testInput = tf.ones([1, 8, 1]);
+            } else {
+                testInput = tf.ones([1, 8]);
+            }
+            
             const output = this.model.predict(testInput);
             const result = await output.data();
             const outputShape = output.shape;
@@ -703,13 +910,14 @@ class DNAClassifier {
             output.dispose();
             
             console.log('Model validation details:', {
+                modelType: this.modelType,
+                inputShape: testInput.shape,
                 outputShape: outputShape,
                 resultLength: result.length,
                 result: result,
                 expectedLength: this.classLabels.length
             });
             
-            // More flexible validation: as long as output is valid probability distribution
             const isValid = Array.isArray(result) && 
                            result.length > 0 && 
                            result.every(val => !isNaN(val) && val >= 0);
@@ -717,7 +925,6 @@ class DNAClassifier {
             if (isValid) {
                 this.log(`Model validation: PASSED - Output shape: [${outputShape}]`, 'success');
                 
-                // If output dimension doesn't match, auto-adjust
                 if (result.length !== this.classLabels.length) {
                     this.log(`Warning: Model output dimension (${result.length}) doesn't match expected (${this.classLabels.length}). Some features may not work correctly.`, 'warning');
                 }
@@ -773,6 +980,7 @@ class DNAClassifier {
         this.trainData = null;
         this.testData = null;
         this.trainingHistory = [];
+        this.shouldStopTraining = false;
         
         document.getElementById('trainSamples').textContent = '0';
         document.getElementById('testSamples').textContent = '0';
@@ -797,6 +1005,10 @@ class DNAClassifier {
 
         document.getElementById('modelType').value = 'improved_dense';
         this.modelType = 'improved_dense';
+
+        const trainBtn = document.getElementById('trainBtn');
+        trainBtn.textContent = 'Train Model';
+        trainBtn.style.background = '#28a745';
 
         this.log('System reset completed. All memory cleared.', 'success');
     }
