@@ -58,6 +58,7 @@ p {
     border: 1px solid #dee2e6;
     border-radius: 5px;
     background: white;
+    flex: 1;
 }
 
 .upload-group {
@@ -186,6 +187,19 @@ button:disabled {
     margin-bottom: 10px;
 }
 
+.confidence-chart {
+    margin: 20px 0;
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+}
+
+#confidenceChart {
+    width: 100% !important;
+    height: 300px !important;
+}
+
 #singleTestResult {
     margin-top: 15px;
     padding: 15px;
@@ -198,6 +212,7 @@ button:disabled {
     font-size: 18px;
     font-weight: bold;
     color: #28a745;
+    margin-bottom: 10px;
 }
 
 .confidence-bar {
@@ -230,7 +245,7 @@ button:disabled {
 .feature-item {
     display: flex;
     justify-content: space-between;
-    padding: 5px 10px;
+    padding: 8px 12px;
     background: white;
     border-radius: 5px;
     border: 1px solid #dee2e6;
@@ -238,10 +253,21 @@ button:disabled {
 
 .feature-name {
     font-weight: bold;
+    color: #333;
 }
 
 .feature-value {
     color: #6c757d;
+    font-family: monospace;
+}
+
+.feature-analysis {
+    margin-top: 15px;
+}
+
+.feature-analysis h4 {
+    margin-bottom: 10px;
+    color: #333;
 }
 
 @media (max-width: 768px) {
@@ -260,5 +286,14 @@ button:disabled {
     
     .feature-grid {
         grid-template-columns: 1fr;
+    }
+    
+    .model-selection {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .model-selection select {
+        width: 100%;
     }
 }
