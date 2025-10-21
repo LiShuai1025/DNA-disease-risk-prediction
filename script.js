@@ -23,18 +23,15 @@ class DNAClassifier {
     }
 
     setupEventListeners() {
-        // File upload listeners
         document.getElementById('trainFile').addEventListener('change', (e) => this.handleFileUpload(e, 'train'));
         document.getElementById('testFile').addEventListener('change', (e) => this.handleFileUpload(e, 'test'));
         document.getElementById('modelJsonFile').addEventListener('change', (e) => this.updateFileName(e, 'modelJson'));
         document.getElementById('modelWeightsFile').addEventListener('change', (e) => this.updateFileName(e, 'modelWeights'));
 
-        // Model type selection
         document.getElementById('modelType').addEventListener('change', (e) => {
             this.setModelType(e.target.value);
         });
 
-        // Button listeners
         document.getElementById('trainBtn').addEventListener('click', () => this.trainModel());
         document.getElementById('evaluateBtn').addEventListener('click', () => this.evaluateModel());
         document.getElementById('testRandomBtn').addEventListener('click', () => this.testRandomSamples());
@@ -59,7 +56,6 @@ class DNAClassifier {
         logContainer.appendChild(logEntry);
         logContainer.scrollTop = logContainer.scrollHeight;
         
-        // Also log to console for debugging
         console.log(`[${type.toUpperCase()}] ${message}`);
     }
 
@@ -84,7 +80,6 @@ class DNAClassifier {
                 const content = e.target.result;
                 const firstLine = content.split('\n')[0];
                 
-                // Detect delimiter
                 if (firstLine.includes('\t')) {
                     resolve('\t');
                 } else if (firstLine.includes(',')) {
@@ -92,7 +87,6 @@ class DNAClassifier {
                 } else if (firstLine.includes(';')) {
                     resolve(';');
                 } else {
-                    // Default to tab delimiter
                     resolve('\t');
                 }
             };
@@ -107,7 +101,6 @@ class DNAClassifier {
         this.log(`Loading ${dataType === 'train' ? 'training' : 'testing'} data: ${file.name}`);
         
         try {
-            // Auto-detect delimiter
             const delimiter = await this.detectDelimiter(file);
             this.log(`Detected delimiter: ${delimiter === '\t' ? 'tab' : delimiter}`);
             
@@ -117,14 +110,12 @@ class DNAClassifier {
                 this.trainData = DataLoader.processData(data);
                 document.getElementById('trainSamples').textContent = this.trainData.features.length;
                 
-                // Update class distribution
                 const distribution = this.trainData.analysis.classDistribution;
                 document.getElementById('classDistribution').textContent = JSON.stringify(distribution);
                 
                 this.log(`Training data loaded successfully: ${this.trainData.features.length} samples`);
                 this.log(`Class distribution: ${JSON.stringify(distribution)}`);
                 
-                // Show data analysis
                 if (this.trainData.analysis.featureStats.GC_Content) {
                     const stats = this.trainData.analysis.featureStats.GC_Content;
                     this.log(`GC Content analysis - Min: ${stats.min.toFixed(2)}, Max: ${stats.max.toFixed(2)}, Mean: ${stats.mean.toFixed(2)}`);
@@ -142,30 +133,14 @@ class DNAClassifier {
         }
     }
 
-    async loadCSVWithDelimiter(file, delimiter) {
-        return new Promise((resolve, reject) => {
-            Papa.parse(file, {
-                header: true,
-                dynamicTyping: true,
-                delimiter: delimiter,
-                skipEmptyLines: true,
-                complete: (results) => {
-                    if (results.errors.length > 0) {
-                        reject(new Error(results.errors[0].message));
-                    } else {
-                        resolve(results.data);
-                    }
-                },
-                error: (error) => {
-                    reject(error);
-                }
-            });
-        });
-    }
-
     async trainModel() {
         if (!this.trainData) {
             this.log('Error: Please upload training data first', 'error');
+            return;
+        }
+
+        if (this.trainData.features.length === 0) {
+            this.log('Error: No valid training samples found', 'error');
             return;
         }
 
@@ -174,7 +149,6 @@ class DNAClassifier {
             return;
         }
 
-        // Show data statistics
         if (this.trainData.analysis) {
             this.log('Data Analysis Summary:');
             this.log(`Total samples: ${this.trainData.analysis.totalSamples}`);
@@ -186,7 +160,6 @@ class DNAClassifier {
 
         let xs, ys;
         try {
-            // Create model
             this.model = ModelBuilder.createModel(
                 this.trainData.features[0].length, 
                 this.classLabels.length,
@@ -197,7 +170,6 @@ class DNAClassifier {
             xs = tf.tensor2d(features);
             ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
-            // Training configuration
             const epochs = 100;
             const batchSize = Math.min(32, features.length);
             const validationSplit = 0.2;
@@ -219,7 +191,6 @@ class DNAClassifier {
                         const currentLoss = logs.loss;
                         const currentValLoss = logs.val_loss;
                         
-                        // Store history for visualization
                         this.trainingHistory.push({
                             epoch: epoch + 1,
                             accuracy: currentAcc,
@@ -234,7 +205,6 @@ class DNAClassifier {
                                 `Loss: ${currentLoss.toFixed(4)}, ` +
                                 `Val Loss: ${currentValLoss.toFixed(4)}`);
 
-                        // Early stopping
                         if (currentValAcc > bestValAcc) {
                             bestValAcc = currentValAcc;
                             patienceCounter = 0;
@@ -250,7 +220,6 @@ class DNAClassifier {
                     },
                     onTrainEnd: () => {
                         this.log(`Training completed. Best validation accuracy: ${(bestValAcc * 100).toFixed(2)}%`, 'success');
-                        // Draw training history if we have data
                         Visualization.drawTrainingHistory(this.trainingHistory);
                     }
                 }
@@ -259,7 +228,6 @@ class DNAClassifier {
             this.log('Model training completed successfully!', 'success');
             this.updateModelInfo();
 
-            // Evaluate on training data
             await this.evaluateOnTrainData();
 
         } catch (error) {
@@ -268,7 +236,6 @@ class DNAClassifier {
         } finally {
             this.isTraining = false;
             
-            // Clean up memory
             if (xs) xs.dispose();
             if (ys) ys.dispose();
         }
@@ -348,7 +315,6 @@ class DNAClassifier {
         const resultsContainer = document.getElementById('randomTestResults');
         resultsContainer.innerHTML = '';
 
-        // Randomly select 5 samples
         const indices = [];
         const sampleCount = Math.min(5, features.length);
         for (let i = 0; i < sampleCount; i++) {
@@ -419,8 +385,7 @@ class DNAClassifier {
 
         let inputTensor, prediction;
         try {
-            // Extract features from sequence
-            const features = DataLoader.extractFeaturesFromSequence(sequenceInput);
+            const features = DataLoader.extractFeaturesFromSequence(sequenceInput, 3);
             inputTensor = tf.tensor2d([features]);
             prediction = this.model.predict(inputTensor);
             const results = await prediction.data();
@@ -429,7 +394,6 @@ class DNAClassifier {
             const predictedClassIndex = results.indexOf(maxConfidence);
             const predictedClass = this.classLabels[predictedClassIndex];
             
-            // Draw confidence chart
             Visualization.drawConfidenceChart(Array.from(results), this.classLabels);
             
             const resultDiv = document.getElementById('singleTestResult');
@@ -503,19 +467,16 @@ class DNAClassifier {
         this.log('Saving model...');
 
         try {
-            // Save model architecture
             const modelJson = this.model.toJSON();
             const modelJsonStr = JSON.stringify(modelJson);
             const modelJsonBlob = new Blob([modelJsonStr], { type: 'application/json' });
             
-            // Trigger download
             const modelJsonUrl = URL.createObjectURL(modelJsonBlob);
             const modelJsonLink = document.createElement('a');
             modelJsonLink.href = modelJsonUrl;
             modelJsonLink.download = 'dna-classifier-model.json';
             modelJsonLink.click();
 
-            // Save weights
             await this.model.save('downloads://dna-classifier-model');
 
             this.log('Model saved successfully! Check your downloads folder for dna-classifier-model.json and dna-classifier-model.weights.bin', 'success');
@@ -537,57 +498,14 @@ class DNAClassifier {
         this.log('Loading model...');
 
         try {
-            // Read model JSON
-            const modelJson = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    try {
-                        resolve(JSON.parse(reader.result));
-                    } catch (parseError) {
-                        reject(new Error('Invalid JSON file format'));
-                    }
-                };
-                reader.onerror = () => reject(new Error('Failed to read JSON file'));
-                reader.readAsText(jsonFile);
-            });
-
-            // Read weights file
-            const modelWeights = await new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = () => reject(new Error('Failed to read weights file'));
-                reader.readAsArrayBuffer(weightsFile);
-            });
-
-            // Method 1: Try standard loading first
-            try {
-                this.log('Attempting standard model loading...');
-                
-                // Create temporary URLs for loading
-                const modelJsonBlob = new Blob([JSON.stringify(modelJson)], { type: 'application/json' });
-                const modelJsonUrl = URL.createObjectURL(modelJsonBlob);
-                
-                // Modify weights manifest paths if needed
-                if (modelJson.weightsManifest && modelJson.weightsManifest[0]) {
-                    modelJson.weightsManifest[0].paths = ['model-weights.bin'];
-                }
-                
-                // Load model using standard method
-                this.model = await tf.loadLayersModel(modelJsonUrl);
-                
-                // Clean up URL
-                URL.revokeObjectURL(modelJsonUrl);
-                
-                this.log('Model loaded successfully using standard method!', 'success');
-            } catch (standardError) {
-                this.log('Standard loading failed, trying alternative method...', 'warning');
-                this.log(`Standard error: ${standardError.message}`, 'warning');
-                
-                // Method 2: Reconstruct model from weights
-                await this.reconstructModelFromWeights(modelJson, modelWeights);
-            }
+            this.log('Attempting to load model using standard method...');
             
-            // Validate the loaded model
+            this.model = await tf.loadLayersModel(
+                tf.io.browserFiles([jsonFile, weightsFile])
+            );
+            
+            this.log('Model loaded successfully!', 'success');
+            
             const isValid = await this.validateLoadedModel();
             if (isValid) {
                 this.log('Model validation passed!', 'success');
@@ -600,89 +518,18 @@ class DNAClassifier {
             this.log(`Model load error: ${error.message}`, 'error');
             console.error('Load error details:', error);
             
-            // Provide helpful error messages
             if (error.message.includes('Unknown layer')) {
-                this.log('This error usually occurs due to TensorFlow.js version compatibility issues.', 'error');
-                this.log('Solution: Retrain the model with the current TensorFlow.js version or ensure consistent versions between saving and loading.', 'error');
+                this.log('TensorFlow.js version compatibility issue detected.', 'error');
+                this.log('Solution: Retrain the model with the current TensorFlow.js version.', 'error');
             }
         }
     }
 
-    // New method: Reconstruct model from weights when standard loading fails
-    async reconstructModelFromWeights(modelJson, modelWeights) {
-        this.log('Attempting to reconstruct model from weights...');
-        
-        try {
-            // Determine input dimension (extract from model JSON or use default)
-            let inputDim = 8; // Default feature dimension
-            if (modelJson.modelTopology && modelJson.modelTopology.config && 
-                modelJson.modelTopology.config.layers && modelJson.modelTopology.config.layers[0]) {
-                const inputLayer = modelJson.modelTopology.config.layers[0];
-                if (inputLayer.config && inputLayer.config.batch_input_shape) {
-                    inputDim = inputLayer.config.batch_input_shape[1];
-                }
-            }
-            
-            // Determine model type (infer from layer structure)
-            let modelType = 'improved_dense';
-            if (modelJson.modelTopology && modelJson.modelTopology.config) {
-                const layers = modelJson.modelTopology.config.layers || [];
-                const hasConvLayers = layers.some(layer => layer.className && layer.className.includes('Conv'));
-                if (hasConvLayers) {
-                    modelType = 'cnn';
-                } else if (layers.length > 6) {
-                    modelType = 'deep_dense';
-                }
-            }
-            
-            this.log(`Reconstructing model: inputDim=${inputDim}, modelType=${modelType}`);
-            
-            // Recreate the model architecture
-            this.model = ModelBuilder.createModel(inputDim, this.classLabels.length, modelType);
-            
-            // Convert weights to Float32Array
-            const weightData = new Float32Array(modelWeights);
-            const weights = [];
-            let offset = 0;
-            
-            // Load weights into each layer
-            for (const layer of this.model.layers) {
-                const layerWeights = [];
-                for (let i = 0; i < layer.weights.length; i++) {
-                    const weightSpec = layer.weights[i];
-                    const size = weightSpec.shape.reduce((a, b) => a * b, 1);
-                    
-                    if (offset + size > weightData.length) {
-                        throw new Error('Weight data size mismatch during reconstruction');
-                    }
-                    
-                    const values = weightData.slice(offset, offset + size);
-                    offset += size;
-                    layerWeights.push(tf.tensor(values, weightSpec.shape));
-                }
-                
-                if (layerWeights.length > 0) {
-                    layer.setWeights(layerWeights);
-                    // Clean up temporary tensors
-                    layerWeights.forEach(tensor => tensor.dispose());
-                }
-            }
-            
-            this.log('Model successfully reconstructed from weights!', 'success');
-            
-        } catch (reconstructError) {
-            this.log(`Model reconstruction failed: ${reconstructError.message}`, 'error');
-            throw new Error('Unable to load model. Please retrain the model with the current TensorFlow.js version.');
-        }
-    }
-
-    // New method: Validate that the loaded model works correctly
     async validateLoadedModel() {
         if (!this.model) return false;
         
         try {
-            // Simple prediction test with dummy data
-            const testInput = tf.ones([1, 8]); // 8 features
+            const testInput = tf.ones([1, 8]);
             const output = this.model.predict(testInput);
             const result = await output.data();
             
@@ -733,22 +580,18 @@ class DNAClassifier {
     }
 
     resetSystem() {
-        // Clear TensorFlow.js memory
         if (this.model) {
             this.model.dispose();
         }
         tf.disposeVariables();
 
-        // Clear visualization charts
         Visualization.clearCharts();
 
-        // Reset data and state
         this.model = null;
         this.trainData = null;
         this.testData = null;
         this.trainingHistory = [];
         
-        // Reset UI elements
         document.getElementById('trainSamples').textContent = '0';
         document.getElementById('testSamples').textContent = '0';
         document.getElementById('layersCount').textContent = '0';
@@ -759,7 +602,6 @@ class DNAClassifier {
         document.getElementById('randomTestResults').innerHTML = '';
         document.getElementById('singleTestResult').innerHTML = '';
         
-        // Reset file inputs
         document.getElementById('trainFile').value = '';
         document.getElementById('testFile').value = '';
         document.getElementById('modelJsonFile').value = '';
@@ -771,7 +613,6 @@ class DNAClassifier {
         document.getElementById('modelJsonFileName').textContent = 'No file chosen';
         document.getElementById('modelWeightsFileName').textContent = 'No file chosen';
 
-        // Reset model type
         document.getElementById('modelType').value = 'improved_dense';
         this.modelType = 'improved_dense';
 
@@ -779,7 +620,6 @@ class DNAClassifier {
     }
 }
 
-// Initialize application
 let dnaClassifier;
 document.addEventListener('DOMContentLoaded', () => {
     try {
