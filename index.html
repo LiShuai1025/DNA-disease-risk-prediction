@@ -87,22 +87,21 @@
 
         <!-- Random Test Results -->
         <div class="random-test">
-            <h2>Random Sample Testing</h2>
+            <h2>Model Testing</h2>
             <div id="randomTestResults"></div>
         </div>
 
-        <!-- Single Sequence Test -->
-        <div class="single-test">
-            <h2>Single Sequence Test</h2>
-            <textarea id="singleSequence" placeholder="Enter DNA sequence (ATCG characters only)..." rows="4"></textarea>
-            <button id="testSingleBtn">Test Sequence</button>
+        <!-- Sequence Input for Classification -->
+        <div class="sequence-classification">
+            <h2>Sequence Classification</h2>
+            <p>Enter a DNA sequence to classify its origin:</p>
+            <textarea id="dnaSequenceInput" placeholder="Enter DNA sequence (ATCG characters only)..." rows="4"></textarea>
+            <button id="classifySequenceBtn">Classify Sequence</button>
             
-            <!-- Confidence Chart -->
-            <div class="confidence-chart">
-                <canvas id="confidenceChart"></canvas>
+            <!-- Classification Results -->
+            <div class="classification-results">
+                <div id="classificationOutput"></div>
             </div>
-            
-            <div id="singleTestResult"></div>
         </div>
     </div>
 
