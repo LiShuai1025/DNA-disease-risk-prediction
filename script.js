@@ -12,6 +12,33 @@ class DNAClassifier {
         this.modelType = 'improved_dense';
         this.trainingHistory = [];
         this.tfjsVersion = tf.version.tfjs;
+                // 推荐训练配置
+        this.recommendedConfig = {
+            improved_dense: {
+                epochs: 200,
+                batchSize: 16,
+                validationSplit: 0.15,
+                learningRate: 0.0005,
+                patience: 20
+            },
+            cnn: {
+                epochs: 150,
+                batchSize: 32,
+                validationSplit: 0.2,
+                learningRate: 0.001,
+                patience: 15
+            },
+            deep_dense: {
+                epochs: 100,
+                batchSize: 16,
+                validationSplit: 0.15,
+                learningRate: 0.0003,
+                patience: 12
+            }
+        };
+        
+        this.currentConfig = { ...this.recommendedConfig.improved_dense };
+        
         this.init();
     }
 
