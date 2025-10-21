@@ -1,0 +1,16 @@
+{
+  "name": "dna-sequence-classifier",
+  "version": "1.0.0",
+  "description": "Web-based DNA sequence origin classifier",
+  "main": "app.js",
+  "scripts": {
+    "start": "http-server -p 3000",
+    "build": "echo 'Build complete'"
+  },
+  "keywords": ["dna", "classification", "bioinformatics", "machine-learning"],
+  "author": "Your Name",
+  "license": "MIT",
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
