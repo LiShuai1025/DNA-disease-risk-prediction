@@ -27,6 +27,16 @@
             </div>
         </div>
 
+        <!-- Model Selection -->
+        <div class="model-selection">
+            <label for="modelType">Model Architecture:</label>
+            <select id="modelType">
+                <option value="improved_dense">Improved Dense</option>
+                <option value="cnn">CNN</option>
+                <option value="deep_dense">Deep Dense</option>
+            </select>
+        </div>
+
         <!-- Control Buttons -->
         <div class="controls">
             <button id="trainBtn">Train</button>
@@ -56,6 +66,7 @@
             <h2>Data Status</h2>
             <p><strong>Train samples:</strong> <span id="trainSamples">0</span></p>
             <p><strong>Test samples:</strong> <span id="testSamples">0</span></p>
+            <p><strong>Class distribution:</strong> <span id="classDistribution">-</span></p>
         </div>
 
         <!-- Model Info -->
@@ -63,6 +74,7 @@
             <h2>Model Info</h2>
             <p><strong>Layers:</strong> <span id="layersCount">0</span></p>
             <p><strong>Total parameters:</strong> <span id="totalParams">0</span></p>
+            <p><strong>Architecture:</strong> <span id="modelArchitecture">-</span></p>
         </div>
 
         <!-- Training Logs -->
@@ -92,12 +104,3 @@
     <script src="script.js"></script>
 </body>
 </html>
-<!-- 在控制按钮部分添加模型选择 -->
-<div class="model-selection">
-    <label for="modelType">Model Architecture:</label>
-    <select id="modelType">
-        <option value="improved_dense">Improved Dense</option>
-        <option value="cnn">CNN</option>
-        <option value="deep_dense">Deep Dense</option>
-    </select>
-</div>
