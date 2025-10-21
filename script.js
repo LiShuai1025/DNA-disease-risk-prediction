@@ -160,3 +160,11 @@ class DNAClassifier {
         return { features: augmentedFeatures, labels: augmentedLabels };
     }
 }
+setupEventListeners() {
+    // ... 其他监听器
+    
+    // 模型类型选择
+    document.getElementById('modelType').addEventListener('change', (e) => {
+        this.setModelType(e.target.value);
+    });
+}
