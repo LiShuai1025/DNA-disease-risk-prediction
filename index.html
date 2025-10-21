@@ -1,81 +1,94 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNA Sequence Origin Classifier</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>DNA序列来源分类器</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>DNA Sequence Origin Classifier</h1>
-            <p>Predict biological source: Human, Bacteria, Virus, Plant</p>
-        </header>
+        <h1>DNA序列来源分类器</h1>
+        <p>基于深度学习的DNA序列生物来源分类 (人类、细菌、病毒、植物)</p>
 
-        <main>
-            <section class="input-section">
-                <div class="input-group">
-                    <label for="dna-sequence">Enter DNA Sequence (ATCG):</label>
-                    <textarea id="dna-sequence" placeholder="Example: ATGCTAGCTAGCTAGCTAGCTAG..." rows="6"></textarea>
-                </div>
-                
-                <div class="actions">
-                    <button id="analyze-btn" class="btn-primary">Analyze Sequence</button>
-                    <button id="clear-btn" class="btn-secondary">Clear</button>
-                    <input type="file" id="file-input" accept=".fasta,.fa,.txt,.csv" style="display: none;">
-                    <button id="upload-btn" class="btn-secondary">Upload File</button>
-                </div>
-                
-                <div class="sequence-info">
-                    <p>Sequence Length: <span id="seq-length">0</span> bp</p>
-                    <p>GC Content: <span id="gc-content">0%</span></p>
-                </div>
-            </section>
-
-            <section id="results-section" class="results-section hidden">
-                <div class="prediction-card">
-                    <h3>Prediction Results</h3>
-                    <div class="prediction-main">
-                        <div class="top-prediction">
-                            <h4>Most Likely Source:</h4>
-                            <div id="top-prediction" class="prediction-label"></div>
-                            <div id="confidence-score" class="confidence-score"></div>
-                        </div>
-                        <div id="confidence-chart" class="chart-container"></div>
-                    </div>
-                </div>
-
-                <div class="alignment-card">
-                    <h3>Sequence Analysis</h3>
-                    <div id="alignment-viewer" class="alignment-viewer"></div>
-                </div>
-
-                <div class="features-card">
-                    <h3>Sequence Features</h3>
-                    <div id="features-display" class="features-display"></div>
-                </div>
-            </section>
-
-            <div id="loading" class="loading hidden">
-                <div class="spinner"></div>
-                <p>Analyzing DNA sequence...</p>
+        <!-- 数据上传部分 -->
+        <div class="upload-section">
+            <div class="upload-group">
+                <label for="trainFile">上传训练CSV:</label>
+                <input type="file" id="trainFile" accept=".csv">
+                <span id="trainFileName">未选择文件</span>
             </div>
-        </main>
+            <div class="upload-group">
+                <label for="testFile">上传测试CSV:</label>
+                <input type="file" id="testFile" accept=".csv">
+                <span id="testFileName">未选择文件</span>
+            </div>
+        </div>
 
-        <footer>
-            <p>Applications: Pathogen Detection | Environmental DNA Analysis | Biomedical Research</p>
-        </footer>
+        <!-- 控制按钮 -->
+        <div class="controls">
+            <button id="trainBtn">训练</button>
+            <button id="evaluateBtn">评估</button>
+            <button id="testRandomBtn">随机测试5个</button>
+            <button id="saveModelBtn">保存模型</button>
+            <button id="resetBtn">重置</button>
+        </div>
+
+        <!-- 模型加载 -->
+        <div class="model-load-section">
+            <div class="upload-group">
+                <label for="modelJsonFile">加载模型JSON:</label>
+                <input type="file" id="modelJsonFile" accept=".json">
+                <span id="modelJsonFileName">未选择文件</span>
+            </div>
+            <div class="upload-group">
+                <label for="modelWeightsFile">加载模型权重:</label>
+                <input type="file" id="modelWeightsFile" accept=".bin">
+                <span id="modelWeightsFileName">未选择文件</span>
+            </div>
+            <button id="loadModelBtn">加载模型</button>
+        </div>
+
+        <!-- 数据状态 -->
+        <div class="data-status">
+            <h2>数据状态</h2>
+            <p><strong>训练样本:</strong> <span id="trainSamples">0</span></p>
+            <p><strong>测试样本:</strong> <span id="testSamples">0</span></p>
+        </div>
+
+        <!-- 模型信息 -->
+        <div class="model-info">
+            <h2>模型信息</h2>
+            <p><strong>层数:</strong> <span id="layersCount">0</span></p>
+            <p><strong>总参数:</strong> <span id="totalParams">0</span></p>
+        </div>
+
+        <!-- 训练日志 -->
+        <div class="training-logs">
+            <h2>训练日志</h2>
+            <div id="logContainer"></div>
+        </div>
+
+        <!-- 随机测试预览 -->
+        <div class="random-test">
+            <h2>随机5个测试预览</h2>
+            <div id="randomTestResults"></div>
+        </div>
+
+        <!-- 单序列测试 -->
+        <div class="single-test">
+            <h2>单序列测试</h2>
+            <textarea id="singleSequence" placeholder="输入DNA序列进行测试..." rows="4"></textarea>
+            <button id="testSingleBtn">测试序列</button>
+            <div id="singleTestResult"></div>
+        </div>
     </div>
 
-    <!-- TensorFlow.js and Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0"></script>
-    
-    <!-- Custom JavaScript -->
-    <script src="utils.js"></script>
-    <script src="model.js"></script>
-    <script src="visualization.js"></script>
-    <script src="app.js"></script>
+    <script src="utils/dataLoader.js"></script>
+    <script src="utils/modelBuilder.js"></script>
+    <script src="utils/visualization.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
