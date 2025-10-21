@@ -1,4 +1,106 @@
 class DataLoader {
+    // 添加数据统计分析
+    static analyzeData(data) {
+        const analysis = {
+            totalSamples: data.length,
+            classDistribution: {},
+            featureStats: {},
+            sequenceLengths: []
+        };
+
+        // 类别分布
+        data.forEach(row => {
+            const label = row.Class_Label;
+            analysis.classDistribution[label] = (analysis.classDistribution[label] || 0) + 1;
+            
+            // 序列长度
+            if (row.Sequence) {
+                analysis.sequenceLengths.push(row.Sequence.length);
+            }
+        });
+
+        // 特征统计
+        const features = ['GC_Content', 'AT_Content', 'Sequence_Length', 'kmer_3_freq'];
+        features.forEach(feature => {
+            const values = data.map(row => parseFloat(row[feature])).filter(v => !isNaN(v));
+            if (values.length > 0) {
+                analysis.featureStats[feature] = {
+                    min: Math.min(...values),
+                    max: Math.max(...values),
+                    mean: values.reduce((a, b) => a + b, 0) / values.length,
+                    std: Math.sqrt(values.reduce((sq, n) => sq + Math.pow(n - values.reduce((a, b) => a + b, 0) / values.length, 2), 0) / values.length)
+                };
+            }
+        });
+
+        return analysis;
+    }
+
+    // 数据标准化
+    static normalizeFeatures(features) {
+        if (features.length === 0) return features;
+        
+        const numFeatures = features[0].length;
+        const normalized = [];
+        
+        // 计算每个特征的均值和标准差
+        const means = [];
+        const stds = [];
+        
+        for (let i = 0; i < numFeatures; i++) {
+            const featureValues = features.map(f => f[i]);
+            const mean = featureValues.reduce((a, b) => a + b, 0) / featureValues.length;
+            const std = Math.sqrt(featureValues.reduce((sq, n) => sq + Math.pow(n - mean, 2), 0) / featureValues.length);
+            
+            means.push(mean);
+            stds.push(std || 1); // 避免除零
+        }
+        
+        // 标准化特征
+        for (const feature of features) {
+            const normalizedFeature = feature.map((value, i) => {
+                return (value - means[i]) / stds[i];
+            });
+            normalized.push(normalizedFeature);
+        }
+        
+        return normalized;
+    }
+
+    // 增强的数据处理
+    static processData(rawData) {
+        const features = [];
+        const labels = [];
+        const processedData = [];
+
+        // 先分析数据
+        const analysis = this.analyzeData(rawData);
+        console.log('Data Analysis:', analysis);
+
+        for (const row of rawData) {
+            if (!row.Sequence || !row.Class_Label) continue;
+
+            const featureVector = this.extractFeaturesFromRow(row);
+            const labelIndex = this.getClassLabelIndex(row.Class_Label);
+
+            if (featureVector && labelIndex !== -1) {
+                features.push(featureVector);
+                labels.push(labelIndex);
+                processedData.push(row);
+            }
+        }
+
+        // 标准化特征
+        const normalizedFeatures = this.normalizeFeatures(features);
+
+        return { 
+            features: normalizedFeatures, 
+            labels, 
+            rawData: processedData,
+            analysis: analysis
+        };
+    }
+}
     static async loadCSV(file, delimiter = '\t') {
         return new Promise((resolve, reject) => {
             Papa.parse(file, {
