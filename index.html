@@ -1,55 +1,78 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNA序列来源分类器</title>
-    <link rel="stylesheet" href="style.css">
+    <title>DNA Sequence Origin Classifier</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <header>
-        <h1>DNA序列生物来源分类器</h1>
-        <p>快速识别DNA序列的生物来源：人类、细菌、病毒、植物</p>
-    </header>
+    <div class="container">
+        <header>
+            <h1>DNA Sequence Origin Classifier</h1>
+            <p>Predict biological source: Human, Bacteria, Virus, Plant</p>
+        </header>
 
-    <main>
-        <!-- 输入区域 -->
-        <section id="input-section">
-            <textarea id="dna-input" placeholder="输入DNA序列 (ATCG...)"></textarea>
-            <div class="input-actions">
-                <button id="analyze-btn">分析序列</button>
-                <button id="clear-btn">清空</button>
-                <input type="file" id="file-input" accept=".fasta,.fa,.txt">
+        <main>
+            <section class="input-section">
+                <div class="input-group">
+                    <label for="dna-sequence">Enter DNA Sequence (ATCG):</label>
+                    <textarea id="dna-sequence" placeholder="Example: ATGCTAGCTAGCTAGCTAGCTAG..." rows="6"></textarea>
+                </div>
+                
+                <div class="actions">
+                    <button id="analyze-btn" class="btn-primary">Analyze Sequence</button>
+                    <button id="clear-btn" class="btn-secondary">Clear</button>
+                    <input type="file" id="file-input" accept=".fasta,.fa,.txt,.csv" style="display: none;">
+                    <button id="upload-btn" class="btn-secondary">Upload File</button>
+                </div>
+                
+                <div class="sequence-info">
+                    <p>Sequence Length: <span id="seq-length">0</span> bp</p>
+                    <p>GC Content: <span id="gc-content">0%</span></p>
+                </div>
+            </section>
+
+            <section id="results-section" class="results-section hidden">
+                <div class="prediction-card">
+                    <h3>Prediction Results</h3>
+                    <div class="prediction-main">
+                        <div class="top-prediction">
+                            <h4>Most Likely Source:</h4>
+                            <div id="top-prediction" class="prediction-label"></div>
+                            <div id="confidence-score" class="confidence-score"></div>
+                        </div>
+                        <div id="confidence-chart" class="chart-container"></div>
+                    </div>
+                </div>
+
+                <div class="alignment-card">
+                    <h3>Sequence Analysis</h3>
+                    <div id="alignment-viewer" class="alignment-viewer"></div>
+                </div>
+
+                <div class="features-card">
+                    <h3>Sequence Features</h3>
+                    <div id="features-display" class="features-display"></div>
+                </div>
+            </section>
+
+            <div id="loading" class="loading hidden">
+                <div class="spinner"></div>
+                <p>Analyzing DNA sequence...</p>
             </div>
-        </section>
+        </main>
 
-        <!-- 结果显示区域 -->
-        <section id="results-section" class="hidden">
-            <div id="prediction-result">
-                <h3>预测结果</h3>
-                <div id="confidence-chart"></div>
-            </div>
-            
-            <div id="alignment-results">
-                <h3>序列比对</h3>
-                <div id="alignment-viewer"></div>
-            </div>
-        </section>
+        <footer>
+            <p>Applications: Pathogen Detection | Environmental DNA Analysis | Biomedical Research</p>
+        </footer>
+    </div>
 
-        <!-- 加载状态 -->
-        <div id="loading" class="hidden">
-            <div class="spinner"></div>
-            <p>正在分析中...</p>
-        </div>
-    </main>
-
-    <footer>
-        <p>应用场景：病原体检测 | 环境DNA分析 | 生物信息研究</p>
-    </footer>
-
-    <!-- 引入TensorFlow.js和其他依赖 -->
+    <!-- TensorFlow.js and Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.18.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0"></script>
+    
+    <!-- Custom JavaScript -->
     <script src="utils.js"></script>
     <script src="model.js"></script>
     <script src="visualization.js"></script>
