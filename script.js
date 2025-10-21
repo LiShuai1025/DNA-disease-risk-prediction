@@ -11,12 +11,14 @@ class DNAClassifier {
         ];
         this.modelType = 'improved_dense';
         this.trainingHistory = [];
+        this.tfjsVersion = tf.version.tfjs;
         this.init();
     }
 
     init() {
         this.setupEventListeners();
         this.log('DNA Classifier System Initialized', 'success');
+        this.log(`TensorFlow.js Version: ${this.tfjsVersion}`, 'info');
     }
 
     setupEventListeners() {
@@ -534,19 +536,21 @@ class DNAClassifier {
         this.log('Loading model...');
 
         try {
+            // Read model JSON
             const modelJson = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => {
                     try {
                         resolve(JSON.parse(reader.result));
                     } catch (parseError) {
-                        reject(new Error('Invalid JSON file'));
+                        reject(new Error('Invalid JSON file format'));
                     }
                 };
                 reader.onerror = () => reject(new Error('Failed to read JSON file'));
                 reader.readAsText(jsonFile);
             });
 
+            // Read weights file
             const modelWeights = await new Promise((resolve, reject) => {
                 const reader = new FileReader();
                 reader.onload = () => resolve(reader.result);
@@ -554,12 +558,148 @@ class DNAClassifier {
                 reader.readAsArrayBuffer(weightsFile);
             });
 
-            this.model = await tf.loadLayersModel(tf.io.fromMemory(modelJson, modelWeights));
-            this.log('Model loaded successfully!', 'success');
-            this.updateModelInfo();
+            // Method 1: Try standard loading first
+            try {
+                this.log('Attempting standard model loading...');
+                
+                // Create temporary URLs for loading
+                const modelJsonBlob = new Blob([JSON.stringify(modelJson)], { type: 'application/json' });
+                const modelJsonUrl = URL.createObjectURL(modelJsonBlob);
+                
+                // Modify weights manifest paths if needed
+                if (modelJson.weightsManifest && modelJson.weightsManifest[0]) {
+                    modelJson.weightsManifest[0].paths = ['model-weights.bin'];
+                }
+                
+                // Load model using standard method
+                this.model = await tf.loadLayersModel(modelJsonUrl);
+                
+                // Clean up URL
+                URL.revokeObjectURL(modelJsonUrl);
+                
+                this.log('Model loaded successfully using standard method!', 'success');
+            } catch (standardError) {
+                this.log('Standard loading failed, trying alternative method...', 'warning');
+                this.log(`Standard error: ${standardError.message}`, 'warning');
+                
+                // Method 2: Reconstruct model from weights
+                await this.reconstructModelFromWeights(modelJson, modelWeights);
+            }
+            
+            // Validate the loaded model
+            const isValid = await this.validateLoadedModel();
+            if (isValid) {
+                this.log('Model validation passed!', 'success');
+                this.updateModelInfo();
+            } else {
+                throw new Error('Loaded model failed validation');
+            }
+            
         } catch (error) {
             this.log(`Model load error: ${error.message}`, 'error');
             console.error('Load error details:', error);
+            
+            // Provide helpful error messages
+            if (error.message.includes('Unknown layer')) {
+                this.log('This error usually occurs due to TensorFlow.js version compatibility issues.', 'error');
+                this.log('Solution: Retrain the model with the current TensorFlow.js version or ensure consistent versions between saving and loading.', 'error');
+            }
+        }
+    }
+
+    // New method: Reconstruct model from weights when standard loading fails
+    async reconstructModelFromWeights(modelJson, modelWeights) {
+        this.log('Attempting to reconstruct model from weights...');
+        
+        try {
+            // Determine input dimension (extract from model JSON or use default)
+            let inputDim = 8; // Default feature dimension
+            if (modelJson.modelTopology && modelJson.modelTopology.config && 
+                modelJson.modelTopology.config.layers && modelJson.modelTopology.config.layers[0]) {
+                const inputLayer = modelJson.modelTopology.config.layers[0];
+                if (inputLayer.config && inputLayer.config.batch_input_shape) {
+                    inputDim = inputLayer.config.batch_input_shape[1];
+                }
+            }
+            
+            // Determine model type (infer from layer structure)
+            let modelType = 'improved_dense';
+            if (modelJson.modelTopology && modelJson.modelTopology.config) {
+                const layers = modelJson.modelTopology.config.layers || [];
+                const hasConvLayers = layers.some(layer => layer.className && layer.className.includes('Conv'));
+                if (hasConvLayers) {
+                    modelType = 'cnn';
+                } else if (layers.length > 6) {
+                    modelType = 'deep_dense';
+                }
+            }
+            
+            this.log(`Reconstructing model: inputDim=${inputDim}, modelType=${modelType}`);
+            
+            // Recreate the model architecture
+            this.model = ModelBuilder.createModel(inputDim, this.classLabels.length, modelType);
+            
+            // Convert weights to Float32Array
+            const weightData = new Float32Array(modelWeights);
+            const weights = [];
+            let offset = 0;
+            
+            // Load weights into each layer
+            for (const layer of this.model.layers) {
+                const layerWeights = [];
+                for (let i = 0; i < layer.weights.length; i++) {
+                    const weightSpec = layer.weights[i];
+                    const size = weightSpec.shape.reduce((a, b) => a * b, 1);
+                    
+                    if (offset + size > weightData.length) {
+                        throw new Error('Weight data size mismatch during reconstruction');
+                    }
+                    
+                    const values = weightData.slice(offset, offset + size);
+                    offset += size;
+                    layerWeights.push(tf.tensor(values, weightSpec.shape));
+                }
+                
+                if (layerWeights.length > 0) {
+                    layer.setWeights(layerWeights);
+                    // Clean up temporary tensors
+                    layerWeights.forEach(tensor => tensor.dispose());
+                }
+            }
+            
+            this.log('Model successfully reconstructed from weights!', 'success');
+            
+        } catch (reconstructError) {
+            this.log(`Model reconstruction failed: ${reconstructError.message}`, 'error');
+            throw new Error('Unable to load model. Please retrain the model with the current TensorFlow.js version.');
+        }
+    }
+
+    // New method: Validate that the loaded model works correctly
+    async validateLoadedModel() {
+        if (!this.model) return false;
+        
+        try {
+            // Simple prediction test with dummy data
+            const testInput = tf.ones([1, 8]); // 8 features
+            const output = this.model.predict(testInput);
+            const result = await output.data();
+            
+            testInput.dispose();
+            output.dispose();
+            
+            const isValid = Array.isArray(result) && result.length === this.classLabels.length;
+            
+            if (isValid) {
+                this.log('Model validation: PASSED', 'success');
+            } else {
+                this.log('Model validation: FAILED - Invalid output format', 'error');
+            }
+            
+            return isValid;
+        } catch (error) {
+            this.log(`Model validation failed: ${error.message}`, 'error');
+            return false;
         }
     }
 
