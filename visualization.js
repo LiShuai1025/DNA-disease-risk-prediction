@@ -9,7 +9,6 @@ class Visualization {
             return;
         }
         
-        // Destroy existing chart if any
         if (this.confidenceChart) {
             this.confidenceChart.destroy();
         }
@@ -80,14 +79,10 @@ class Visualization {
             return;
         }
 
-        // Create training history chart if needed
-        // This would require adding a canvas element for training history
         console.log('Training history available for visualization:', history);
     }
 
     static drawFeatureImportance(featureImportance, featureNames) {
-        // Feature importance visualization
-        // Implementation depends on feature importance data availability
         console.log('Feature importance visualization:', {
             importance: featureImportance,
             names: featureNames
