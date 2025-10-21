@@ -1,9 +1,13 @@
 class Visualization {
     static confidenceChart = null;
+    static trainingChart = null;
 
     static drawConfidenceChart(probabilities, labels) {
         const ctx = document.getElementById('confidenceChart');
-        if (!ctx) return;
+        if (!ctx) {
+            console.warn('Confidence chart canvas not found');
+            return;
+        }
         
         // Destroy existing chart if any
         if (this.confidenceChart) {
@@ -12,73 +16,101 @@ class Visualization {
 
         const colors = ['#4CAF50', '#2196F3', '#FF9800', '#9C27B0'];
 
-        this.confidenceChart = new Chart(ctx.getContext('2d'), {
-            type: 'bar',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Classification Confidence',
-                    data: probabilities.map(p => p * 100),
-                    backgroundColor: colors,
-                    borderColor: colors.map(color => this.darkenColor(color, 20)),
-                    borderWidth: 1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    y: {
-                        beginAtZero: true,
-                        max: 100,
-                        title: {
-                            display: true,
-                            text: 'Confidence (%)'
-                        }
-                    },
-                    x: {
-                        title: {
-                            display: true,
-                            text: 'Biological Class'
-                        }
-                    }
+        try {
+            this.confidenceChart = new Chart(ctx.getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Classification Confidence',
+                        data: probabilities.map(p => p * 100),
+                        backgroundColor: colors,
+                        borderColor: colors.map(color => this.darkenColor(color, 20)),
+                        borderWidth: 2,
+                        borderRadius: 5
+                    }]
                 },
-                plugins: {
-                    legend: {
-                        display: false
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 100,
+                            title: {
+                                display: true,
+                                text: 'Confidence (%)'
+                            },
+                            grid: {
+                                color: 'rgba(0,0,0,0.1)'
+                            }
+                        },
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Biological Class'
+                            },
+                            grid: {
+                                display: false
+                            }
+                        }
                     },
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `Confidence: ${context.raw.toFixed(2)}%`;
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Confidence: ${context.raw.toFixed(2)}%`;
+                                }
                             }
                         }
                     }
                 }
-            }
+            });
+        } catch (error) {
+            console.error('Error drawing confidence chart:', error);
+        }
+    }
+
+    static drawTrainingHistory(history) {
+        if (!history || !history.acc || !history.val_acc) {
+            console.warn('No training history data available');
+            return;
+        }
+
+        // Create training history chart if needed
+        // This would require adding a canvas element for training history
+        console.log('Training history available for visualization:', history);
+    }
+
+    static drawFeatureImportance(featureImportance, featureNames) {
+        // Feature importance visualization
+        // Implementation depends on feature importance data availability
+        console.log('Feature importance visualization:', {
+            importance: featureImportance,
+            names: featureNames
         });
     }
 
     static darkenColor(color, percent) {
         const num = parseInt(color.replace("#", ""), 16);
         const amt = Math.round(2.55 * percent);
-        const R = (num >> 16) - amt;
-        const G = (num >> 8 & 0x00FF) - amt;
-        const B = (num & 0x0000FF) - amt;
-        return "#" + (0x1000000 + (R < 255 ? R < 1 ? 0 : R : 255) * 0x10000 +
-            (G < 255 ? G < 1 ? 0 : G : 255) * 0x100 +
-            (B < 255 ? B < 1 ? 0 : B : 255)).toString(16).slice(1);
+        const R = Math.max(0, (num >> 16) - amt);
+        const G = Math.max(0, (num >> 8 & 0x00FF) - amt);
+        const B = Math.max(0, (num & 0x0000FF) - amt);
+        return "#" + (0x1000000 + R * 0x10000 + G * 0x100 + B).toString(16).slice(1);
     }
 
-    static drawTrainingHistory(history) {
-        // Training history visualization
-        // Implementation depends on how history data is structured
-        console.log('Training history:', history);
-    }
-
-    static drawFeatureImportance(featureImportance, featureNames) {
-        // Feature importance visualization
-        // Implementation depends on feature importance data
-        console.log('Feature importance:', featureImportance, featureNames);
+    static clearCharts() {
+        if (this.confidenceChart) {
+            this.confidenceChart.destroy();
+            this.confidenceChart = null;
+        }
+        if (this.trainingChart) {
+            this.trainingChart.destroy();
+            this.trainingChart = null;
+        }
     }
 }
