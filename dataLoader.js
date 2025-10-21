@@ -1,16 +1,26 @@
 class DataLoader {
-    static async loadCSV(file) {
+    static async loadCSV(file, delimiter = '\t') {
         return new Promise((resolve, reject) => {
             Papa.parse(file, {
                 header: true,
                 dynamicTyping: true,
-                delimiter: '\t', // 改为制表符分隔
+                delimiter: delimiter,
                 skipEmptyLines: true,
+                transform: function(value) {
+                    // 清理数据值
+                    return typeof value === 'string' ? value.trim() : value;
+                },
                 complete: (results) => {
                     if (results.errors.length > 0) {
                         reject(new Error(results.errors[0].message));
                     } else {
-                        resolve(results.data);
+                        // 验证数据格式
+                        const validation = this.validateDataFormat(results.data);
+                        if (!validation.isValid) {
+                            reject(new Error(validation.message));
+                        } else {
+                            resolve(results.data);
+                        }
                     }
                 },
                 error: (error) => {
@@ -18,6 +28,36 @@ class DataLoader {
                 }
             });
         });
+    }
+
+    static validateDataFormat(data) {
+        if (!data || data.length === 0) {
+            return { isValid: false, message: 'No data found in file' };
+        }
+
+        const firstRow = data[0];
+        const requiredFields = ['Sequence', 'Class_Label'];
+        const missingFields = requiredFields.filter(field => !(field in firstRow));
+
+        if (missingFields.length > 0) {
+            return { 
+                isValid: false, 
+                message: `Missing required fields: ${missingFields.join(', ')}. Found fields: ${Object.keys(firstRow).join(', ')}` 
+            };
+        }
+
+        let validCount = 0;
+        for (const row of data) {
+            if (row.Sequence && row.Class_Label) {
+                validCount++;
+            }
+        }
+
+        return {
+            isValid: validCount > 0,
+            message: `Found ${validCount} valid samples out of ${data.length} total rows`,
+            validCount: validCount
+        };
     }
 
     static processData(rawData) {
@@ -43,16 +83,15 @@ class DataLoader {
 
     static extractFeaturesFromRow(row) {
         try {
-            // 处理可能的数值格式问题
             return [
-                parseFloat(row.GC_Content) || 0,
-                parseFloat(row.AT_Content) || 0,
-                parseInt(row.Sequence_Length) || 0,
-                parseInt(row.Num_A) || 0,
-                parseInt(row.Num_T) || 0,
-                parseInt(row.Num_C) || 0,
-                parseInt(row.Num_G) || 0,
-                parseFloat(row.kmer_3_freq) || 0
+                this.parseNumber(row.GC_Content),
+                this.parseNumber(row.AT_Content),
+                this.parseNumber(row.Sequence_Length),
+                this.parseNumber(row.Num_A),
+                this.parseNumber(row.Num_T),
+                this.parseNumber(row.Num_C),
+                this.parseNumber(row.Num_G),
+                this.parseNumber(row.kmer_3_freq)
             ];
         } catch (error) {
             console.error('Feature extraction error:', error, row);
@@ -60,9 +99,22 @@ class DataLoader {
         }
     }
 
+    static parseNumber(value) {
+        if (typeof value === 'number') return value;
+        if (typeof value === 'string') {
+            const parsed = parseFloat(value);
+            return isNaN(parsed) ? 0 : parsed;
+        }
+        return 0;
+    }
+
     static extractFeaturesFromSequence(sequence) {
         // 清理序列（移除数字和其他非ATCG字符）
-        const cleanSequence = sequence.replace(/[^ATCG]/gi, '').toUpperCase();
+        const cleanSequence = sequence.replace(/[^ATCGatcg]/g, '').toUpperCase();
+        
+        if (cleanSequence.length === 0) {
+            return [0, 0, 0, 0, 0, 0, 0, 0];
+        }
         
         const numA = (cleanSequence.match(/A/g) || []).length;
         const numT = (cleanSequence.match(/T/g) || []).length;
@@ -70,8 +122,8 @@ class DataLoader {
         const numG = (cleanSequence.match(/G/g) || []).length;
         const sequenceLength = cleanSequence.length;
 
-        const gcContent = sequenceLength > 0 ? (numG + numC) / sequenceLength : 0;
-        const atContent = sequenceLength > 0 ? (numA + numT) / sequenceLength : 0;
+        const gcContent = (numG + numC) / sequenceLength;
+        const atContent = (numA + numT) / sequenceLength;
         const kmer3Freq = this.calculateKmerFrequency(cleanSequence, 3);
 
         return [gcContent, atContent, sequenceLength, numA, numT, numC, numG, kmer3Freq];
@@ -85,12 +137,12 @@ class DataLoader {
             const kmer = sequence.substring(i, i + k);
             kmers.set(kmer, (kmers.get(kmer) || 0) + 1);
         }
-        return kmers.size > 0 ? sequence.length / kmers.size : 0;
+        return kmers.size > 0 ? (sequence.length - k + 1) / kmers.size : 0;
     }
 
     static getClassLabelIndex(label) {
         const labels = ['Human', 'Bacteria', 'Virus', 'Plant'];
-        const cleanLabel = label.trim();
+        const cleanLabel = String(label).trim();
         return labels.indexOf(cleanLabel);
     }
 }
