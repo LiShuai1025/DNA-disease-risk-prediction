@@ -42,6 +42,11 @@ p {
     border: 2px dashed #dee2e6;
 }
 
+.model-load-section {
+    background: #fff3cd;
+    border: 2px dashed #ffc107;
+}
+
 .model-selection {
     display: flex;
     align-items: center;
@@ -148,6 +153,11 @@ button:disabled {
     background: #f8f9fa;
 }
 
+.log-entry.info {
+    border-left-color: #17a2b8;
+    background: #d1ecf1;
+}
+
 .log-entry.warning {
     border-left-color: #ffc107;
     background: #fff3cd;
@@ -215,6 +225,14 @@ button:disabled {
     margin-bottom: 10px;
 }
 
+.prediction-result.correct {
+    color: #28a745;
+}
+
+.prediction-result.incorrect {
+    color: #dc3545;
+}
+
 .confidence-bar {
     height: 20px;
     background: #e9ecef;
@@ -268,6 +286,11 @@ button:disabled {
 .feature-analysis h4 {
     margin-bottom: 10px;
     color: #333;
+}
+
+#modelArchitecture {
+    font-weight: bold;
+    color: #6f42c1;
 }
 
 @media (max-width: 768px) {
