@@ -1,94 +1,94 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DNA序列来源分类器</title>
+    <title>DNA Sequence Origin Classifier</title>
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.10.0"></script>
     <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
 </head>
 <body>
     <div class="container">
-        <h1>DNA序列来源分类器</h1>
-        <p>基于深度学习的DNA序列生物来源分类 (人类、细菌、病毒、植物)</p>
+        <h1>DNA Sequence Origin Classifier</h1>
+        <p>Deep Learning-based Classification of DNA Sequences (Human, Bacteria, Virus, Plant)</p>
 
-        <!-- 数据上传部分 -->
+        <!-- Data Upload Section -->
         <div class="upload-section">
             <div class="upload-group">
-                <label for="trainFile">上传训练CSV:</label>
+                <label for="trainFile">Upload Train CSV:</label>
                 <input type="file" id="trainFile" accept=".csv">
-                <span id="trainFileName">未选择文件</span>
+                <span id="trainFileName">No file chosen</span>
             </div>
             <div class="upload-group">
-                <label for="testFile">上传测试CSV:</label>
+                <label for="testFile">Upload Test CSV:</label>
                 <input type="file" id="testFile" accept=".csv">
-                <span id="testFileName">未选择文件</span>
+                <span id="testFileName">No file chosen</span>
             </div>
         </div>
 
-        <!-- 控制按钮 -->
+        <!-- Control Buttons -->
         <div class="controls">
-            <button id="trainBtn">训练</button>
-            <button id="evaluateBtn">评估</button>
-            <button id="testRandomBtn">随机测试5个</button>
-            <button id="saveModelBtn">保存模型</button>
-            <button id="resetBtn">重置</button>
+            <button id="trainBtn">Train</button>
+            <button id="evaluateBtn">Evaluate</button>
+            <button id="testRandomBtn">Test 5 Random</button>
+            <button id="saveModelBtn">Save Model</button>
+            <button id="resetBtn">Reset</button>
         </div>
 
-        <!-- 模型加载 -->
+        <!-- Model Load Section -->
         <div class="model-load-section">
             <div class="upload-group">
-                <label for="modelJsonFile">加载模型JSON:</label>
+                <label for="modelJsonFile">Load Model JSON:</label>
                 <input type="file" id="modelJsonFile" accept=".json">
-                <span id="modelJsonFileName">未选择文件</span>
+                <span id="modelJsonFileName">No file chosen</span>
             </div>
             <div class="upload-group">
-                <label for="modelWeightsFile">加载模型权重:</label>
+                <label for="modelWeightsFile">Load Model Weights:</label>
                 <input type="file" id="modelWeightsFile" accept=".bin">
-                <span id="modelWeightsFileName">未选择文件</span>
+                <span id="modelWeightsFileName">No file chosen</span>
             </div>
-            <button id="loadModelBtn">加载模型</button>
+            <button id="loadModelBtn">Load Model</button>
         </div>
 
-        <!-- 数据状态 -->
+        <!-- Data Status -->
         <div class="data-status">
-            <h2>数据状态</h2>
-            <p><strong>训练样本:</strong> <span id="trainSamples">0</span></p>
-            <p><strong>测试样本:</strong> <span id="testSamples">0</span></p>
+            <h2>Data Status</h2>
+            <p><strong>Train samples:</strong> <span id="trainSamples">0</span></p>
+            <p><strong>Test samples:</strong> <span id="testSamples">0</span></p>
         </div>
 
-        <!-- 模型信息 -->
+        <!-- Model Info -->
         <div class="model-info">
-            <h2>模型信息</h2>
-            <p><strong>层数:</strong> <span id="layersCount">0</span></p>
-            <p><strong>总参数:</strong> <span id="totalParams">0</span></p>
+            <h2>Model Info</h2>
+            <p><strong>Layers:</strong> <span id="layersCount">0</span></p>
+            <p><strong>Total parameters:</strong> <span id="totalParams">0</span></p>
         </div>
 
-        <!-- 训练日志 -->
+        <!-- Training Logs -->
         <div class="training-logs">
-            <h2>训练日志</h2>
+            <h2>Training Logs</h2>
             <div id="logContainer"></div>
         </div>
 
-        <!-- 随机测试预览 -->
+        <!-- Random Test Preview -->
         <div class="random-test">
-            <h2>随机5个测试预览</h2>
+            <h2>Random 5 Test Preview</h2>
             <div id="randomTestResults"></div>
         </div>
 
-        <!-- 单序列测试 -->
+        <!-- Single Sequence Test -->
         <div class="single-test">
-            <h2>单序列测试</h2>
-            <textarea id="singleSequence" placeholder="输入DNA序列进行测试..." rows="4"></textarea>
-            <button id="testSingleBtn">测试序列</button>
+            <h2>Single Sequence Test</h2>
+            <textarea id="singleSequence" placeholder="Enter DNA sequence for testing..." rows="4"></textarea>
+            <button id="testSingleBtn">Test Sequence</button>
             <div id="singleTestResult"></div>
         </div>
     </div>
 
-    <script src="utils/dataLoader.js"></script>
-    <script src="utils/modelBuilder.js"></script>
-    <script src="utils/visualization.js"></script>
+    <script src="dataLoader.js"></script>
+    <script src="modelBuilder.js"></script>
+    <script src="visualization.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
