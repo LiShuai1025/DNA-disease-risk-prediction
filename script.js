@@ -167,7 +167,14 @@ class DNAClassifier {
             );
             
             const { features, labels } = this.trainData;
-            xs = tf.tensor2d(features);
+            
+            // Prepare data based on model type
+            if (this.modelType === 'rnn') {
+                xs = this.prepareRNNData(features);
+            } else {
+                xs = tf.tensor2d(features);
+            }
+            
             ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
             const epochs = 100;
@@ -241,6 +248,17 @@ class DNAClassifier {
         }
     }
 
+    prepareRNNData(features) {
+        // Reshape features for RNN: [samples, timesteps, features]
+        // Using 8 timesteps with 1 feature each
+        const timesteps = 8;
+        const reshapedFeatures = features.map(featureArray => {
+            return featureArray.map(value => [value]); // Convert each feature to [value]
+        });
+        
+        return tf.tensor3d(reshapedFeatures, [features.length, timesteps, 1]);
+    }
+
     async evaluateOnTrainData() {
         if (!this.model || !this.trainData) return;
 
@@ -249,7 +267,13 @@ class DNAClassifier {
         let xs, ys, evaluation;
         try {
             const { features, labels } = this.trainData;
-            xs = tf.tensor2d(features);
+            
+            if (this.modelType === 'rnn') {
+                xs = this.prepareRNNData(features);
+            } else {
+                xs = tf.tensor2d(features);
+            }
+            
             ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
             evaluation = this.model.evaluate(xs, ys);
@@ -285,7 +309,13 @@ class DNAClassifier {
         let xs, ys, evaluation;
         try {
             const { features, labels } = this.testData;
-            xs = tf.tensor2d(features);
+            
+            if (this.modelType === 'rnn') {
+                xs = this.prepareRNNData(features);
+            } else {
+                xs = tf.tensor2d(features);
+            }
+            
             ys = tf.oneHot(tf.tensor1d(labels, 'int32'), this.classLabels.length);
 
             evaluation = this.model.evaluate(xs, ys);
@@ -330,7 +360,13 @@ class DNAClassifier {
 
             let inputTensor, prediction;
             try {
-                inputTensor = tf.tensor2d([feature]);
+                if (this.modelType === 'rnn') {
+                    const rnnFeature = feature.map(value => [value]);
+                    inputTensor = tf.tensor3d([rnnFeature], [1, 8, 1]);
+                } else {
+                    inputTensor = tf.tensor2d([feature]);
+                }
+                
                 prediction = this.model.predict(inputTensor);
                 const results = await prediction.data();
                 
@@ -389,12 +425,18 @@ class DNAClassifier {
             
             // Ensure feature dimension matches model input
             const modelInputDim = this.model.inputs[0].shape[1];
-            if (features.length !== modelInputDim) {
+            if (features.length !== modelInputDim && this.modelType !== 'rnn') {
                 this.log(`Warning: Feature dimension (${features.length}) doesn't match model input (${modelInputDim}). Attempting to adjust...`, 'warning');
                 features.length = Math.min(features.length, modelInputDim);
             }
             
-            inputTensor = tf.tensor2d([features]);
+            if (this.modelType === 'rnn') {
+                const rnnFeatures = features.map(value => [value]);
+                inputTensor = tf.tensor3d([rnnFeatures], [1, 8, 1]);
+            } else {
+                inputTensor = tf.tensor2d([features]);
+            }
+            
             prediction = this.model.predict(inputTensor);
             const results = await prediction.data();
             
@@ -620,6 +662,11 @@ class DNAClassifier {
             layer.className?.includes('Conv') || layer.className?.includes('conv')
         );
         
+        const hasLSTM = layers.some(layer => 
+            layer.className?.includes('LSTM') || layer.className?.includes('lstm')
+        );
+        
+        if (hasLSTM) return 'rnn';
         if (hasConv) return 'cnn';
         if (layers.length > 8) return 'deep_dense';
         return 'improved_dense';
