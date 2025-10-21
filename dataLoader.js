@@ -19,6 +19,8 @@ class DataLoader {
                         if (!validation.isValid) {
                             reject(new Error(validation.message));
                         } else {
+                            // Validate feature fields
+                            this.validateFeatureFields(results.data);
                             resolve(results.data);
                         }
                     }
@@ -58,6 +60,21 @@ class DataLoader {
             message: `Found ${validCount} valid samples out of ${data.length} total rows`,
             validCount: validCount
         };
+    }
+
+    static validateFeatureFields(data) {
+        if (!data || data.length === 0) return;
+
+        const featureFields = ['GC_Content', 'AT_Content', 'Sequence_Length', 
+                              'Num_A', 'Num_T', 'Num_C', 'Num_G', 'kmer_3_freq'];
+        const firstRow = data[0];
+        const missingFeatures = featureFields.filter(field => !(field in firstRow));
+        
+        if (missingFeatures.length > 0) {
+            console.warn(`Missing feature fields: ${missingFeatures.join(', ')}`);
+        }
+        
+        return missingFeatures;
     }
 
     static analyzeData(data) {
