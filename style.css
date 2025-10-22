@@ -115,20 +115,19 @@ button:disabled {
 
 #trainBtn { background: #28a745; }
 #evaluateBtn { background: #17a2b8; }
-#testRandomBtn { background: #ffc107; color: #212529; }
 #saveModelBtn { background: #6f42c1; }
 #resetBtn { background: #dc3545; }
 #loadModelBtn { background: #fd7e14; }
 #testSingleBtn { background: #20c997; }
 
-.data-status, .model-info, .training-logs, .random-test, .single-test {
+.data-status, .model-info, .training-logs, .single-test {
     background: #f8f9fa;
     padding: 20px;
     border-radius: 10px;
     margin-bottom: 20px;
 }
 
-.training-logs h2, .random-test h2, .single-test h2 {
+.training-logs h2, .single-test h2 {
     margin-bottom: 15px;
     color: #333;
     border-bottom: 2px solid #dee2e6;
@@ -171,19 +170,6 @@ button:disabled {
 .log-entry.success {
     border-left-color: #28a745;
     background: #d4edda;
-}
-
-.random-test-item {
-    background: white;
-    padding: 15px;
-    margin-bottom: 10px;
-    border-radius: 8px;
-    border-left: 4px solid #28a745;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-}
-
-.random-test-item.error {
-    border-left-color: #dc3545;
 }
 
 #singleSequence {
